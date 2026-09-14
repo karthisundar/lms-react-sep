@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Plus, Pencil, Trash2, Link2, CirclePlay as PlayCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { userSessionMappingService, sessionMasterService, userService } from '@/services';
@@ -17,17 +18,29 @@ interface UserSessionMappingFormData {
   userSessionRefId: string;
   userId: string;
   sessionId: string;
+  status: number;
 }
 
 const emptyForm: UserSessionMappingFormData = {
   userSessionRefId: '',
   userId: '',
   sessionId: '',
+  status: 1,
 };
 
-export default function AdminMappingsPage() {
+interface AdminMappingsPageProps {
+  initialMode?: 'create' | 'edit';
+}
+
+export default function AdminMappingsPage({ initialMode }: AdminMappingsPageProps = {}) {
+  const navigate = useNavigate();
+  const { id, userSessionRefId } = useParams<{ id?: string; userSessionRefId?: string }>();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
+
+  if (!isAdmin) {
+    return <Navigate to="/sessions" replace />;
+  }
 
   const [rows, setRows] = useState<UserSessionMapping[]>([]);
   const [total, setTotal] = useState(0);
@@ -122,21 +135,25 @@ export default function AdminMappingsPage() {
     return () => clearTimeout(t);
   }, [load, page]);
 
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    if (initialMode) {
+      navigate('/admin/mappings');
+    }
+  };
+
   const openCreate = () => {
     setMode('create');
     setEditing(null);
 
-    // If admin, default to first user or empty; if normal user, lock to current user ID
-    const defaultUserId = isAdmin
-      ? String(users[0]?.user_id ?? users[0]?.id ?? '')
-      : String(currentUser?.user_id ?? currentUser?.id ?? '');
-
+    const defaultUserId = users[0]?.user_ref_id || String(users[0]?.user_id ?? users[0]?.id ?? '');
     const defaultSessionId = sessions[0]?.sessionRefId || sessions[0]?.id || '';
 
     setForm({
       userSessionRefId: '',
       userId: defaultUserId,
       sessionId: defaultSessionId,
+      status: 1,
     });
     setFormError(null);
     setSuccessMessage(null);
@@ -152,6 +169,7 @@ export default function AdminMappingsPage() {
       userSessionRefId: refId,
       userId: String(m.userId),
       sessionId: m.sessionId || '',
+      status: m.status ?? 1,
     });
     setFormError(null);
     setSuccessMessage(null);
@@ -167,6 +185,7 @@ export default function AdminMappingsPage() {
               userSessionRefId: fetched.userSessionRefId || refId,
               userId: String(fetched.userId ?? m.userId),
               sessionId: fetched.sessionId ?? m.sessionId,
+              status: fetched.status ?? m.status ?? 1,
             });
           }
         })
@@ -175,6 +194,23 @@ export default function AdminMappingsPage() {
         });
     }
   };
+
+  useEffect(() => {
+    if (initialMode === 'create') {
+      openCreate();
+    } else if (initialMode === 'edit') {
+      const targetId = userSessionRefId || id;
+      if (targetId) {
+        userSessionMappingService
+          .getUserSessionMapping(targetId)
+          .then((fetched) => {
+            if (fetched) openEdit(fetched);
+          })
+          .catch(() => {});
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMode, id, userSessionRefId]);
 
   const validateForm = (): string | null => {
     if (!form.userId) {
@@ -207,6 +243,7 @@ export default function AdminMappingsPage() {
         userSessionRefId: targetRefId,
         userId: form.userId,
         sessionId: form.sessionId,
+        status: form.status,
       };
 
       await userSessionMappingService.createUserSessionMapping(payload);
@@ -217,7 +254,7 @@ export default function AdminMappingsPage() {
         setSuccessMessage('User session mapping created successfully.');
       }
 
-      setModalOpen(false);
+      handleCloseModal();
       load(page);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Save failed');
@@ -255,14 +292,8 @@ export default function AdminMappingsPage() {
     }
   };
 
-  const canModifyMapping = (m: UserSessionMapping) => {
-    if (isAdmin) return true;
-    if (!currentUser) return false;
-    return (
-      String(m.userId) === String(currentUser.user_id) ||
-      String(m.userId) === String(currentUser.id) ||
-      m.user?.id === currentUser.id
-    );
+  const canModifyMapping = () => {
+    return isAdmin;
   };
 
   const columns: Column<UserSessionMapping>[] = [
@@ -344,16 +375,14 @@ export default function AdminMappingsPage() {
   return (
     <div>
       <PageHeader
-        title="User-Session Mapping"
-        description={
-          isAdmin
-            ? 'Assign users and students to specific class sessions.'
-            : 'View and manage your assigned class sessions.'
-        }
+        title="User Session Mapping"
+        description="Manage user session assignments."
         action={
-          <button onClick={openCreate} className="btn-primary">
-            <Plus className="h-4 w-4" /> Assign Session
-          </button>
+          isAdmin ? (
+            <button onClick={openCreate} className="btn-primary">
+              <Plus className="h-4 w-4" /> Assign Session
+            </button>
+          ) : null
         }
       />
 
@@ -398,7 +427,7 @@ export default function AdminMappingsPage() {
         searchValue={search}
         rowKey={(m) => m.userSessionRefId || m.id || String(m.userSessionId)}
         actions={(m) => {
-          const allowed = canModifyMapping(m);
+          const allowed = canModifyMapping();
           if (!allowed) return null;
           return (
             <div className="flex items-center justify-end gap-1">
@@ -426,7 +455,7 @@ export default function AdminMappingsPage() {
       {/* Create / Edit Modal */}
       <Modal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={handleCloseModal}
         title={mode === 'edit' ? 'Edit Mapping' : 'Assign Session'}
         description={
           mode === 'edit'
@@ -435,7 +464,7 @@ export default function AdminMappingsPage() {
         }
         footer={
           <>
-            <button onClick={() => setModalOpen(false)} className="btn-secondary">
+            <button onClick={handleCloseModal} className="btn-secondary">
               Cancel
             </button>
             <button onClick={handleSave} disabled={saving} className="btn-primary">
@@ -454,38 +483,22 @@ export default function AdminMappingsPage() {
             <label className="label">
               User <span className="text-red-500">*</span>
             </label>
-            {isAdmin ? (
-              <select
-                className="input"
-                value={form.userId}
-                onChange={(e) => setForm({ ...form, userId: e.target.value })}
-                required
-              >
-                <option value="">Select user…</option>
-                {users.map((u) => {
-                  const uId = String(u.user_id ?? u.id);
-                  return (
-                    <option key={uId} value={uId}>
-                      {u.name} — {u.email}
-                    </option>
-                  );
-                })}
-              </select>
-            ) : (
-              <div className="input bg-gray-50 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300 flex items-center justify-between cursor-not-allowed">
-                <span>
-                  {currentUser?.name} — {currentUser?.email}
-                </span>
-                <span className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-500 dark:text-gray-400">
-                  Current User
-                </span>
-              </div>
-            )}
-            {!isAdmin && (
-              <p className="mt-1 text-xs text-gray-400">
-                You can only assign or update sessions for your own account.
-              </p>
-            )}
+            <select
+              className="input"
+              value={form.userId}
+              onChange={(e) => setForm({ ...form, userId: e.target.value })}
+              required
+            >
+              <option value="">Select user…</option>
+              {users.map((u) => {
+                const uId = u.user_ref_id || String(u.user_id ?? u.id);
+                return (
+                  <option key={uId} value={uId}>
+                    {u.name} — {u.email}
+                  </option>
+                );
+              })}
+            </select>
           </div>
 
           <div>
@@ -507,6 +520,21 @@ export default function AdminMappingsPage() {
                   </option>
                 );
               })}
+            </select>
+          </div>
+
+          <div>
+            <label className="label">
+              Status <span className="text-red-500">*</span>
+            </label>
+            <select
+              className="input"
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: Number(e.target.value) })}
+              required
+            >
+              <option value={1}>Active</option>
+              <option value={0}>Inactive</option>
             </select>
           </div>
 

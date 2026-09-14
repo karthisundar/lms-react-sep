@@ -205,6 +205,21 @@ const videos: Video[] = [
     deletedAt: null,
     id: 'uuid-video-3',
   },
+  {
+    videoId: 4,
+    videoRefId: 'db642430-54f5-4a1a-adbe-eaf9cc0e78c6',
+    title: 'Trailer',
+    filename: 'Trailer',
+    url: 'https://www.youtube.com/watch?v=lU40CPN7Ww0',
+    signedUrl: 'https://www.youtube.com/watch?v=lU40CPN7Ww0',
+    durationSec: 120,
+    sessionId: 'uuid-session-1',
+    bucketId: 'uuid-bucket-1',
+    createdAt: '2026-09-14T14:41:21.000Z',
+    updatedAt: '2026-09-14T14:41:21.000Z',
+    deletedAt: null,
+    id: 'db642430-54f5-4a1a-adbe-eaf9cc0e78c6',
+  },
 ];
 
 const mappings: UserSessionMapping[] = [
@@ -306,9 +321,13 @@ export const demoApi = {
   },
 
   sessions: {
-    async list(params: { search?: string; page?: number; pageSize?: number } = {}) {
+    async list(params: { search?: string; status?: string; page?: number; pageSize?: number } = {}) {
       await delay();
-      return paginate(sessions, params.search, params.page, params.pageSize);
+      let list = sessions;
+      if (params.status && params.status !== 'all') {
+        list = list.filter((s) => s.status.toLowerCase() === params.status?.toLowerCase());
+      }
+      return paginate(list, params.search, params.page, params.pageSize);
     },
     async get(refOrId: string) {
       await delay();
@@ -318,6 +337,11 @@ export const demoApi = {
     },
     async create(body: any) {
       await delay();
+      const currentUser = getStoredUser() || (getToken() ? getUserFromToken(getToken()!) : null);
+      if (currentUser && currentUser.role !== 'admin') {
+        throw Object.assign(new Error('Forbidden: Only administrators can create sessions'), { status: 403 });
+      }
+
       const refId = body.sessionRefId && String(body.sessionRefId).trim() ? body.sessionRefId : `uuid-${Date.now()}`;
       const existingIdx = sessions.findIndex((x) => x.sessionRefId === body.sessionRefId || x.id === body.sessionRefId);
       if (existingIdx >= 0) {
@@ -357,6 +381,11 @@ export const demoApi = {
     },
     async update(id: string, body: any) {
       await delay();
+      const currentUser = getStoredUser() || (getToken() ? getUserFromToken(getToken()!) : null);
+      if (currentUser && currentUser.role !== 'admin') {
+        throw Object.assign(new Error('Forbidden: Only administrators can modify sessions'), { status: 403 });
+      }
+
       const idx = sessions.findIndex((x) => x.sessionRefId === id || x.id === id);
       if (idx >= 0) {
         sessions[idx] = {
@@ -375,6 +404,11 @@ export const demoApi = {
     },
     async remove(id: string) {
       await delay();
+      const currentUser = getStoredUser() || (getToken() ? getUserFromToken(getToken()!) : null);
+      if (currentUser && currentUser.role !== 'admin') {
+        throw Object.assign(new Error('Forbidden: Only administrators can delete sessions'), { status: 403 });
+      }
+
       const i = sessions.findIndex((x) => x.sessionRefId === id || x.id === id);
       if (i >= 0) sessions.splice(i, 1);
     },
@@ -454,9 +488,14 @@ export const demoApi = {
   },
 
   videos: {
-    async list(params: { search?: string; page?: number; pageSize?: number } = {}) {
+    async list(params: { search?: string; sessionId?: string; sessionRefId?: string; page?: number; pageSize?: number } = {}) {
       await delay();
-      return paginate(videos, params.search, params.page, params.pageSize);
+      let list = videos;
+      const targetSession = params.sessionId || params.sessionRefId;
+      if (targetSession) {
+        list = list.filter((v) => v.sessionId === targetSession || (v as any).sessionRefId === targetSession);
+      }
+      return paginate(list, params.search, params.page, params.pageSize);
     },
     async get(refOrId: string) {
       await delay();
@@ -547,6 +586,11 @@ export const demoApi = {
     },
     async create(body: any) {
       await delay();
+      const currentUser = getStoredUser() || (getToken() ? getUserFromToken(getToken()!) : null);
+      if (currentUser && currentUser.role !== 'admin') {
+        throw Object.assign(new Error('Forbidden: Only administrators can assign or create user session mappings'), { status: 403 });
+      }
+
       const refId =
         body.userSessionRefId && String(body.userSessionRefId).trim()
           ? body.userSessionRefId
@@ -566,6 +610,7 @@ export const demoApi = {
           ...mappings[existingIdx],
           userId: Number(body.userId) || body.userId,
           sessionId: body.sessionId,
+          status: body.status !== undefined ? Number(body.status) : mappings[existingIdx].status,
           user: u ? { id: u.id, name: u.name, email: u.email, user_id: u.user_id } : mappings[existingIdx].user,
           session: s ? { id: s.id, name: s.sessionName || s.name, date: s.startDate || s.date, sessionRefId: s.sessionRefId, sessionName: s.sessionName } : mappings[existingIdx].session,
           updatedAt: new Date().toISOString(),
@@ -580,7 +625,7 @@ export const demoApi = {
         id: refId,
         userId: Number(body.userId) || body.userId,
         sessionId: body.sessionId,
-        status: 1,
+        status: body.status !== undefined ? Number(body.status) : 1,
         createdAt: new Date().toISOString(),
         updatedAt: null,
         deletedAt: null,
@@ -592,6 +637,11 @@ export const demoApi = {
     },
     async update(id: string, body: any) {
       await delay();
+      const currentUser = getStoredUser() || (getToken() ? getUserFromToken(getToken()!) : null);
+      if (currentUser && currentUser.role !== 'admin') {
+        throw Object.assign(new Error('Forbidden: Only administrators can modify user session mappings'), { status: 403 });
+      }
+
       const idx = mappings.findIndex(
         (x) => x.userSessionRefId === id || x.id === id || String(x.userSessionId) === id
       );
@@ -606,6 +656,7 @@ export const demoApi = {
           ...mappings[idx],
           userId: body.userId !== undefined ? (Number(body.userId) || body.userId) : mappings[idx].userId,
           sessionId: body.sessionId !== undefined ? body.sessionId : mappings[idx].sessionId,
+          status: body.status !== undefined ? Number(body.status) : mappings[idx].status,
           user: u ? { id: u.id, name: u.name, email: u.email, user_id: u.user_id } : mappings[idx].user,
           session: s ? { id: s.id, name: s.sessionName || s.name, date: s.startDate || s.date, sessionRefId: s.sessionRefId, sessionName: s.sessionName } : mappings[idx].session,
           updatedAt: new Date().toISOString(),
@@ -616,6 +667,11 @@ export const demoApi = {
     },
     async remove(refOrId: string) {
       await delay();
+      const currentUser = getStoredUser() || (getToken() ? getUserFromToken(getToken()!) : null);
+      if (currentUser && currentUser.role !== 'admin') {
+        throw Object.assign(new Error('Forbidden: Only administrators can delete user session mappings'), { status: 403 });
+      }
+
       const i = mappings.findIndex(
         (x) => x.userSessionRefId === refOrId || x.id === refOrId || String(x.userSessionId) === refOrId
       );

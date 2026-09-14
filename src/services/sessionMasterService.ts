@@ -21,6 +21,8 @@ export const sessionMasterService = {
     api.sessionMaster.updateSession(data),
   deleteSession: (payload: SessionDeleteInput | string): Promise<void> =>
     api.sessionMaster.deleteSession(payload),
+  getUserAssignedSessions: (params?: ListParams): Promise<PaginatedResponse<Session>> =>
+    api.student.mySessions(params),
 
   // Aliases conforming to standard CRUD naming in other project modules
   list: (params?: ListParams): Promise<PaginatedResponse<Session>> =>

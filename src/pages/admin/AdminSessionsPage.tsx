@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Calendar, CheckCircle2 } from 'lucide-react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Plus, Pencil, Trash2, Calendar, CheckCircle2, Eye } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import { sessionMasterService } from '@/services';
 import type { Session, SessionCreateInput, SessionUpdateInput } from '@/types/api';
 import DataTable, { type Column } from '@/components/DataTable';
@@ -22,13 +24,26 @@ const emptyForm: SessionFormData = {
   status: 'draft',
 };
 
-export default function AdminSessionsPage() {
+interface AdminSessionsPageProps {
+  initialMode?: 'create' | 'edit';
+}
+
+export default function AdminSessionsPage({ initialMode }: AdminSessionsPageProps = {}) {
+  const { user } = useAuth();
+  if (user && user.role !== 'admin') {
+    return <Navigate to="/sessions" replace />;
+  }
+
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+
   const [rows, setRows] = useState<Session[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -47,7 +62,12 @@ export default function AdminSessionsPage() {
     setLoading(true);
     setError(null);
     sessionMasterService
-      .getAllSessions({ page: targetPage, pageSize, search: search || undefined })
+      .getAllSessions({
+        page: targetPage,
+        pageSize,
+        search: search || undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+      })
       .then((res) => {
         const extractedRows = res.row || res.items || [];
         const extractedTotal = Number(res.totalItem ?? res.total ?? 0);
@@ -66,12 +86,33 @@ export default function AdminSessionsPage() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load sessions'))
       .finally(() => setLoading(false));
-  }, [page, pageSize, search]);
+  }, [page, pageSize, search, statusFilter]);
 
   useEffect(() => {
     const t = setTimeout(() => load(page), 250);
     return () => clearTimeout(t);
   }, [load, page]);
+
+  useEffect(() => {
+    if (initialMode === 'create') {
+      openCreate();
+    } else if (initialMode === 'edit' && id) {
+      sessionMasterService
+        .getSession(id)
+        .then((s) => {
+          if (s) openEdit(s);
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMode, id]);
+
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    if (initialMode) {
+      navigate('/sessions');
+    }
+  };
 
   const openCreate = () => {
     setMode('create');
@@ -310,6 +351,25 @@ export default function AdminSessionsPage() {
         </div>
       )}
 
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Status:</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+            className="input w-36 py-1 text-sm"
+          >
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+          </select>
+        </div>
+      </div>
+
       <DataTable
         columns={columns}
         rows={rows}
@@ -329,32 +389,43 @@ export default function AdminSessionsPage() {
         }}
         searchValue={search}
         rowKey={(s) => s.sessionRefId || s.id || String(s.sessionMasterId)}
-        actions={(s) => (
-          <div className="flex items-center justify-end gap-1">
-            <button
-              onClick={() => openEdit(s)}
-              className="btn-ghost h-8 w-8 p-0 text-brand-600 hover:text-brand-700 dark:text-brand-400"
-              title="Edit Session"
-              aria-label="Edit Session"
-            >
-              <Pencil className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setDeleteTarget(s)}
-              className="btn-ghost h-8 w-8 p-0 text-red-500 hover:text-red-600"
-              title="Delete Session"
-              aria-label="Delete Session"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+        actions={(s) => {
+          const sRefId = s.sessionRefId || s.id;
+          return (
+            <div className="flex items-center justify-end gap-1">
+              <button
+                onClick={() => navigate(`/sessions/${sRefId}`)}
+                className="btn-ghost h-8 w-8 p-0 text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                title="View Session Details & Videos"
+                aria-label="View Session Details & Videos"
+              >
+                <Eye className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => openEdit(s)}
+                className="btn-ghost h-8 w-8 p-0 text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                title="Edit Session"
+                aria-label="Edit Session"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setDeleteTarget(s)}
+                className="btn-ghost h-8 w-8 p-0 text-red-500 hover:text-red-600"
+                title="Delete Session"
+                aria-label="Delete Session"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        }}
       />
 
       {/* Create / Edit modal */}
       <Modal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={handleCloseModal}
         title={mode === 'edit' ? 'Edit Session' : 'New Session'}
         description={
           mode === 'edit'
@@ -363,7 +434,7 @@ export default function AdminSessionsPage() {
         }
         footer={
           <>
-            <button onClick={() => setModalOpen(false)} className="btn-secondary">
+            <button onClick={handleCloseModal} className="btn-secondary">
               Cancel
             </button>
             <button onClick={handleSave} disabled={saving} className="btn-primary">

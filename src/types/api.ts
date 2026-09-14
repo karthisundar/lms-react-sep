@@ -1,5 +1,8 @@
 // Shared API types — all request/response payloads for the coding class platform.
 
+export const ADMIN_ROLE_ID = 1;
+export const USER_ROLE_ID = 2;
+
 export type Role = 'admin' | 'user';
 
 export type UserFormMode = 'create' | 'edit';
@@ -239,12 +242,14 @@ export interface UserSessionMappingCreateInput {
   userSessionRefId?: string;
   userId: string | number;
   sessionId: string;
+  status?: number | string;
 }
 
 export interface UserSessionMappingUpdateInput {
   userSessionRefId: string;
   userId: string | number;
   sessionId: string;
+  status?: number | string;
 }
 
 export interface UserSessionMappingDeleteInput {
@@ -255,6 +260,7 @@ export interface UserSessionMappingInput {
   userSessionRefId?: string;
   userId: string | number;
   sessionId: string;
+  status?: number | string;
 }
 
 export interface PaginatedResponse<T> {
@@ -280,6 +286,9 @@ export type ApiPaginatedResponse<T> = ApiResponse<T>;
 
 export interface ListParams {
   search?: string;
+  status?: string;
+  sessionId?: string;
+  sessionRefId?: string;
   page?: number;
   pageSize?: number;
 }

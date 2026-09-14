@@ -33,6 +33,7 @@ import type {
   VideoDeleteInput,
   VideoUpdateInput,
 } from '@/types/api';
+import { ADMIN_ROLE_ID, USER_ROLE_ID } from '@/types/api';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3100').replace(/\/$/, '');
 const BASE_URL = `${API_BASE_URL}/api`;
@@ -248,14 +249,7 @@ export const profileApi = {
   get: () => request<User>('/profile'),
 };
 
-// ---- Student sessions ----
-export const studentApi = {
-  mySessions: (params: ListParams = {}) =>
-    request<PaginatedResponse<Session>>(`/sessions/mine${withQuery(params)}`),
-  session: (id: string) => request<Session>(`/sessions/${id}`),
-  videoForSession: (sessionId: string) =>
-    request<Video>(`/sessions/${sessionId}/video`),
-};
+
 
 export function normalizeSession(s: Record<string, any>): Session {
   const sessionMasterId = Number(s.sessionMasterId ?? s.id ?? 0);
@@ -300,6 +294,7 @@ export const sessionMasterApi = {
     sp.set('page', String(page));
     sp.set('pageSize', String(pageSize));
     if (params.search) sp.set('search', params.search);
+    if (params.status && params.status !== 'all') sp.set('status', params.status);
     const query = `?${sp.toString()}`;
 
     const res = await request<ApiResponse<Session>>(`${SESSION_MASTER_BASE_URL}/getAllSessions${query}`);
@@ -600,6 +595,8 @@ export const videoMasterApi = {
     sp.set('page', String(page));
     sp.set('pageSize', String(pageSize));
     if (params.search) sp.set('search', params.search);
+    if (params.sessionId) sp.set('sessionId', params.sessionId);
+    if (params.sessionRefId) sp.set('sessionRefId', params.sessionRefId);
     const query = `?${sp.toString()}`;
 
     const res = await request<ApiResponse<Video>>(`${VIDEO_MASTER_BASE_URL}/getAllVideos${query}`);
@@ -876,9 +873,84 @@ export const userSessionMappingApi = {
 
 export const mappingsApi = userSessionMappingApi;
 
+// ---- Student Sessions & Video Access ----
+export const studentApi = {
+  mySessions: async (params: ListParams = {}): Promise<PaginatedResponse<Session>> => {
+    try {
+      const mappingRes = await userSessionMappingApi.getAllUserSessionMappings(params);
+      const mappings = mappingRes.row || [];
+      const sessionsList: Session[] = [];
+      for (const m of mappings) {
+        if (m.session && (m.session.name || (m.session as any).sessionName)) {
+          sessionsList.push({
+            sessionMasterId: 0,
+            sessionRefId: m.sessionId,
+            sessionCode: '',
+            sessionName: (m.session as any).sessionName || m.session.name || '',
+            name: (m.session as any).sessionName || m.session.name || '',
+            description: (m.session as any).description || null,
+            startDate: m.session.date || (m.session as any).startDate || null,
+            endDate: null,
+            date: m.session.date || (m.session as any).startDate || '',
+            status: (m.session as any).status || (m.status === 1 ? 'active' : 'draft'),
+            id: m.sessionId,
+          });
+        } else if (m.sessionId) {
+          try {
+            const s = await sessionMasterApi.getSession(m.sessionId);
+            if (s) sessionsList.push(s);
+          } catch {
+            sessionsList.push({
+              sessionMasterId: 0,
+              sessionRefId: m.sessionId,
+              sessionCode: '',
+              sessionName: `Session (${m.sessionId.slice(0, 8)}…)`,
+              name: `Session (${m.sessionId.slice(0, 8)}…)`,
+              description: null,
+              startDate: m.createdAt || null,
+              endDate: null,
+              status: m.status === 1 ? 'active' : 'draft',
+              id: m.sessionId,
+              date: m.createdAt || '',
+            });
+          }
+        }
+      }
+      return {
+        totalItem: mappingRes.totalItem,
+        totalPage: mappingRes.totalPage,
+        row: sessionsList,
+        currentPage: mappingRes.currentPage,
+        items: sessionsList,
+        total: mappingRes.totalItem,
+        page: mappingRes.page,
+        pageSize: mappingRes.pageSize,
+      };
+    } catch {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: '1',
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: params.pageSize ?? 10,
+      };
+    }
+  },
+  session: (sessionRefId: string) => sessionMasterApi.getSession(sessionRefId),
+  videoForSession: async (sessionId: string): Promise<Video> => {
+    const res = await videoMasterApi.getAllVideos({ sessionId, pageSize: 100 });
+    const v = (res.row || res.items || [])[0];
+    if (!v) throw Object.assign(new Error('No video found for this session'), { status: 404 });
+    return v;
+  },
+};
+
 export function normalizeUser(u: Record<string, any>): User {
   const id = String(u.user_id ?? u.id ?? u.user_ref_id ?? '');
-  const roleStr = String(u.role ?? (u.role_id === 1 ? 'admin' : 'user')).toLowerCase();
+  const roleStr = String(u.role ?? (u.role_id === ADMIN_ROLE_ID ? 'admin' : 'user')).toLowerCase();
   const role: Role = roleStr.includes('admin') ? 'admin' : 'user';
   const isActive =
     u.status !== undefined
@@ -899,7 +971,7 @@ export function normalizeUser(u: Record<string, any>): User {
     status: u.status ?? (isActive ? 'active' : 'inactive'),
     user_id: u.user_id,
     user_ref_id: u.user_ref_id,
-    role_id: u.role_id,
+    role_id: u.role_id ?? (role === 'admin' ? ADMIN_ROLE_ID : USER_ROLE_ID),
     phoneNumber: phone,
     phone_number: phone,
     createdAt: u.createdAt,

@@ -6,8 +6,8 @@ import AppLayout from '@/components/AppLayout';
 import LoginPage from '@/pages/LoginPage';
 
 import ProfilePage from '@/pages/student/ProfilePage';
-import MySessionsPage from '@/pages/student/MySessionsPage';
 import SessionPlayerPage from '@/pages/student/SessionPlayerPage';
+import SessionsRoutingPage from '@/pages/SessionsRoutingPage';
 
 import AdminDashboard from '@/pages/admin/AdminDashboard';
 import AdminUsersPage from '@/pages/admin/AdminUsersPage';
@@ -30,21 +30,21 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
 
-            {/* Student routes */}
+            {/* Shared routes: accessible to both admin and user */}
             <Route
               element={
-                <ProtectedRoute roles={['user']}>
+                <ProtectedRoute roles={['admin', 'user']}>
                   <AppLayout />
                 </ProtectedRoute>
               }
             >
-              <Route path="/sessions" element={<MySessionsPage />} />
+              <Route path="/sessions" element={<SessionsRoutingPage />} />
+              <Route path="/my-sessions" element={<Navigate to="/sessions" replace />} />
               <Route path="/sessions/:id" element={<SessionPlayerPage />} />
-              <Route path="/mappings" element={<AdminMappingsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
             </Route>
 
-            {/* Admin routes */}
+            {/* Admin-only routes */}
             <Route
               element={
                 <ProtectedRoute roles={['admin']}>
@@ -55,9 +55,16 @@ export default function App() {
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/sessions" element={<AdminSessionsPage />} />
+              <Route path="/sessions/create" element={<AdminSessionsPage initialMode="create" />} />
+              <Route path="/sessions/edit/:id" element={<AdminSessionsPage initialMode="edit" />} />
               <Route path="/admin/buckets" element={<AdminBucketsPage />} />
               <Route path="/admin/videos" element={<AdminVideosPage />} />
               <Route path="/admin/mappings" element={<AdminMappingsPage />} />
+              <Route path="/mappings" element={<AdminMappingsPage />} />
+              <Route path="/mappings/create" element={<AdminMappingsPage initialMode="create" />} />
+              <Route path="/mappings/edit/:id" element={<AdminMappingsPage initialMode="edit" />} />
+              <Route path="/mappings/edit/:userSessionRefId" element={<AdminMappingsPage initialMode="edit" />} />
+              <Route path="/user-session-mapping" element={<Navigate to="/mappings" replace />} />
             </Route>
 
             <Route path="/" element={<RoleRedirect />} />

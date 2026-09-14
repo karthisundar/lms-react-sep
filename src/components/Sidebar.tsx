@@ -14,12 +14,12 @@ const adminNav: NavItem[] = [
   { to: '/admin/sessions', label: 'Sessions', icon: PlayCircle },
   { to: '/admin/buckets', label: 'Buckets', icon: Database },
   { to: '/admin/videos', label: 'Videos', icon: Film },
-  { to: '/admin/mappings', label: 'Mappings', icon: Link2 },
+  { to: '/admin/mappings', label: 'User Session Mapping', icon: Link2 },
+  { to: '/profile', label: 'Profile', icon: UserCircle },
 ];
 
 const studentNav: NavItem[] = [
   { to: '/sessions', label: 'My Sessions', icon: PlayCircle },
-  { to: '/mappings', label: 'Mappings', icon: Link2 },
   { to: '/profile', label: 'Profile', icon: UserCircle },
 ];
 
