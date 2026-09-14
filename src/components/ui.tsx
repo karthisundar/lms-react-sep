@@ -31,12 +31,15 @@ export function ErrorBanner({ message }: { message: string }) {
 }
 
 export function StatusBadge({ status }: { status: string }) {
+  const normalized = (status || '').toLowerCase();
   const map: Record<string, string> = {
+    active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
     published: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
     draft: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    inactive: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
     archived: 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
   };
-  return <span className={`badge ${map[status] ?? map.archived}`}>{status}</span>;
+  return <span className={`badge ${map[normalized] ?? map.archived}`}>{status}</span>;
 }
 
 export function EmptyState({ title, description, icon }: { title: string; description?: string; icon?: ReactNode }) {

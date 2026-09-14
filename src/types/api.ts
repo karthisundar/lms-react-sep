@@ -94,82 +94,166 @@ export interface ClientLabelResponse {
   };
 }
 
-export type SessionStatus = 'draft' | 'published' | 'archived';
+export type SessionStatus = 'draft' | 'active' | 'published' | 'archived' | string;
 
 export interface Session {
+  sessionMasterId: number;
+  sessionRefId: string;
+  sessionCode: string;
+  sessionName: string;
+  description: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  deletedBy?: number | null;
+  // Compatibility fields for existing modules
   id: string;
   name: string;
-  description: string;
-  date: string; // ISO
-  status: SessionStatus;
-  createdAt?: string;
-  updatedAt?: string;
+  date: string;
 }
 
 export interface SessionCreateInput {
+  sessionRefId?: string;
   name: string;
-  description: string;
+  description?: string | null;
   date: string;
-  status: SessionStatus;
+  status: string;
 }
 
-export type SessionUpdateInput = Partial<SessionCreateInput>;
+export type SessionUpdateInput = Partial<SessionCreateInput> & {
+  sessionRefId?: string;
+};
+
+export interface SessionDeleteInput {
+  sessionRefId: string;
+}
 
 export type BucketProvider = 's3' | 'gcs' | 'azure' | 'other';
 
 export interface Bucket {
-  id: string;
-  name: string;
-  provider: BucketProvider;
-  url: string;
-  config?: Record<string, string> | null;
+  bucketId: number;
+  bucketRefId: string;
+  bucketName: string;
+  serviceUrl: string;
+  status: number;
   createdAt?: string;
   updatedAt?: string;
+  deletedAt?: string | null;
+  // Optional compatibility fields for existing modules
+  id?: string;
+  name?: string;
+  provider?: BucketProvider;
+  url?: string;
+  config?: Record<string, string> | null;
 }
 
 export interface BucketCreateInput {
-  name: string;
-  provider: BucketProvider;
-  url: string;
-  config?: Record<string, string> | null;
+  bucketRefId: string;
+  bucketName: string;
+  serviceUrl: string;
+  status: number;
 }
 
-export type BucketUpdateInput = Partial<BucketCreateInput>;
+export interface BucketUpdateInput {
+  bucketRefId: string;
+  bucketName: string;
+  serviceUrl: string;
+  status: number;
+}
+
+export interface BucketDeleteInput {
+  bucketRefId: string;
+}
 
 export interface Video {
-  id: string;
+  videoId: number;
+  videoRefId: string;
+
   title: string;
-  filename?: string;
-  url: string; // direct URL or signed URL returned by backend
-  signedUrl?: string; // time-limited playback URL
-  durationSec?: number;
+  filename: string;
+  url: string;
+
   sessionId: string;
-  bucketId?: string;
+  bucketId: string;
+
   createdAt?: string;
-  updatedAt?: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  deletedBy?: number | null;
+
+  // Compatibility fields for existing modules
+  id: string;
+  signedUrl?: string;
+  durationSec?: number;
 }
 
 export interface VideoCreateInput {
+  videoRefId?: string;
   title: string;
-  filename?: string;
+  filename: string;
   url: string;
   sessionId: string;
-  bucketId?: string;
+  bucketId: string;
 }
 
-export type VideoUpdateInput = Partial<VideoCreateInput>;
+export type VideoUpdateInput = Partial<VideoCreateInput> & {
+  videoRefId?: string;
+};
+
+export interface VideoDeleteInput {
+  videoRefId: string;
+}
 
 export interface UserSessionMapping {
-  id: string;
-  userId: string;
+  userSessionId: number;
+  userSessionRefId: string;
+
+  userId: number | string;
   sessionId: string;
-  user?: Pick<User, 'id' | 'name' | 'email'>;
-  session?: Pick<Session, 'id' | 'name' | 'date'>;
+
+  status: number;
+
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  deletedBy?: number | null;
+
   createdAt?: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+
+  // Compatibility fields for existing UI views
+  id: string;
+  user?: Pick<User, 'id' | 'name' | 'email' | 'user_id'>;
+  session?: Pick<Session, 'id' | 'name' | 'date' | 'sessionRefId' | 'sessionName'>;
+}
+
+export interface UserSessionMappingCreateInput {
+  userSessionRefId?: string;
+  userId: string | number;
+  sessionId: string;
+}
+
+export interface UserSessionMappingUpdateInput {
+  userSessionRefId: string;
+  userId: string | number;
+  sessionId: string;
+}
+
+export interface UserSessionMappingDeleteInput {
+  userSessionRefId: string;
 }
 
 export interface UserSessionMappingInput {
-  userId: string;
+  userSessionRefId?: string;
+  userId: string | number;
   sessionId: string;
 }
 
@@ -184,13 +268,15 @@ export interface PaginatedResponse<T> {
   pageSize?: number;
 }
 
-export interface ApiPaginatedResponse<T> {
+export interface ApiResponse<T> {
   statusCode: number;
   response: {
     code: string;
-    data: Array<PaginatedResponse<T>>;
+    data: PaginatedResponse<T>[];
   };
 }
+
+export type ApiPaginatedResponse<T> = ApiResponse<T>;
 
 export interface ListParams {
   search?: string;

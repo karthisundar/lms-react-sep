@@ -2,10 +2,13 @@ import type {
   ApiErrorResponse,
   ApiLoginResponse,
   ApiPaginatedResponse,
+  ApiResponse,
   AuthLoginRequest,
   AuthLoginResponse,
   Bucket,
   BucketCreateInput,
+  BucketDeleteInput,
+  BucketProvider,
   BucketUpdateInput,
   ClientLabelItem,
   ClientLabelResponse,
@@ -14,15 +17,20 @@ import type {
   Role,
   Session,
   SessionCreateInput,
+  SessionDeleteInput,
   SessionUpdateInput,
   User,
   UserCreateInput,
   UserDeleteInput,
   UserSessionMapping,
+  UserSessionMappingCreateInput,
+  UserSessionMappingDeleteInput,
   UserSessionMappingInput,
+  UserSessionMappingUpdateInput,
   UserUpdateInput,
   Video,
   VideoCreateInput,
+  VideoDeleteInput,
   VideoUpdateInput,
 } from '@/types/api';
 
@@ -249,52 +257,626 @@ export const studentApi = {
     request<Video>(`/sessions/${sessionId}/video`),
 };
 
-// ---- Admin: Sessions ----
-export const sessionsApi = {
-  list: (params: ListParams = {}) =>
-    request<PaginatedResponse<Session>>(`/sessions${withQuery(params)}`),
-  get: (id: string) => request<Session>(`/sessions/${id}`),
-  create: (body: SessionCreateInput) =>
-    request<Session>('/sessions', { method: 'POST', body: JSON.stringify(body) }),
-  update: (id: string, body: SessionUpdateInput) =>
-    request<Session>(`/sessions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  remove: (id: string) => request<void>(`/sessions/${id}`, { method: 'DELETE' }),
+export function normalizeSession(s: Record<string, any>): Session {
+  const sessionMasterId = Number(s.sessionMasterId ?? s.id ?? 0);
+  const sessionRefId = String(s.sessionRefId ?? s.id ?? '');
+  const sessionCode = String(s.sessionCode ?? '');
+  const sessionName = String(s.sessionName ?? s.name ?? '');
+  const description = s.description !== undefined && s.description !== null ? String(s.description) : null;
+  const startDate = s.startDate ?? s.date ?? null;
+  const endDate = s.endDate ?? null;
+  const status = String(s.status ?? 'draft');
+
+  return {
+    sessionMasterId,
+    sessionRefId,
+    sessionCode,
+    sessionName,
+    description,
+    startDate: startDate ? String(startDate) : null,
+    endDate: endDate ? String(endDate) : null,
+    status,
+    createdAt: typeof s.createdAt === 'string' ? s.createdAt : undefined,
+    updatedAt: typeof s.updatedAt === 'string' ? s.updatedAt : null,
+    deletedAt: typeof s.deletedAt === 'string' ? s.deletedAt : null,
+    createdBy: typeof s.createdBy === 'number' ? s.createdBy : null,
+    updatedBy: typeof s.updatedBy === 'number' ? s.updatedBy : null,
+    deletedBy: typeof s.deletedBy === 'number' ? s.deletedBy : null,
+    // compatibility helpers
+    id: sessionRefId || String(sessionMasterId),
+    name: sessionName,
+    date: startDate ? String(startDate) : '',
+  };
+}
+
+// ---- Admin: Session Master ----
+export const SESSION_MASTER_BASE_URL = '/sessionMaster';
+
+export const sessionMasterApi = {
+  getAllSessions: async (params: ListParams = {}): Promise<PaginatedResponse<Session>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<Session>>(`${SESSION_MASTER_BASE_URL}/getAllSessions${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeSession);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getSession: async (sessionRefId: string): Promise<Session> => {
+    const res = await request<ApiResponse<Session> | Record<string, unknown>>(
+      `${SESSION_MASTER_BASE_URL}/getSession?sessionRefId=${encodeURIComponent(sessionRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeSession(raw);
+  },
+
+  createSession: async (body: SessionCreateInput | SessionUpdateInput): Promise<Session> => {
+    const payload = {
+      sessionRefId: body.sessionRefId ?? '',
+      name: (body.name ?? '').trim(),
+      description: body.description?.trim() ?? '',
+      date: body.date ?? '',
+      status: body.status ?? 'draft',
+    };
+    const res = await request<ApiResponse<Session> | Record<string, unknown>>(`${SESSION_MASTER_BASE_URL}/createSession`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = payload;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeSession(raw);
+  },
+
+  deleteSession: async (payload: SessionDeleteInput | string): Promise<void> => {
+    const sessionRefId = typeof payload === 'string' ? payload : payload.sessionRefId;
+    return request<void>(`${SESSION_MASTER_BASE_URL}/deleteSession`, {
+      method: 'POST',
+      body: JSON.stringify({ sessionRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => sessionMasterApi.getAllSessions(params),
+  get: (sessionRefId: string) => sessionMasterApi.getSession(sessionRefId),
+  create: (body: SessionCreateInput | SessionUpdateInput) => sessionMasterApi.createSession(body),
+  update: (idOrBody: string | SessionUpdateInput, body?: SessionUpdateInput) => {
+    if (typeof idOrBody === 'string') {
+      return sessionMasterApi.createSession({ ...(body || {}), sessionRefId: idOrBody });
+    }
+    return sessionMasterApi.createSession(idOrBody);
+  },
+  remove: (payload: SessionDeleteInput | string) => sessionMasterApi.deleteSession(payload),
 };
 
-// ---- Admin: Buckets ----
-export const bucketsApi = {
-  list: (params: ListParams = {}) =>
-    request<PaginatedResponse<Bucket>>(`/buckets${withQuery(params)}`),
-  get: (id: string) => request<Bucket>(`/buckets/${id}`),
-  create: (body: BucketCreateInput) =>
-    request<Bucket>('/buckets', { method: 'POST', body: JSON.stringify(body) }),
-  update: (id: string, body: BucketUpdateInput) =>
-    request<Bucket>(`/buckets/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  remove: (id: string) => request<void>(`/buckets/${id}`, { method: 'DELETE' }),
+export const sessionsApi = sessionMasterApi;
+
+
+export function normalizeBucket(b: Record<string, any>): Bucket {
+  const bucketId = Number(b.bucketId ?? b.id ?? 0);
+  const bucketRefId = String(b.bucketRefId ?? b.id ?? '');
+  const bucketName = String(b.bucketName ?? b.name ?? '');
+  const serviceUrl = String(b.serviceUrl ?? b.url ?? '');
+  const status = typeof b.status === 'number' ? b.status : (b.status === 'active' || b.is_active ? 1 : 0);
+
+  return {
+    bucketId,
+    bucketRefId,
+    bucketName,
+    serviceUrl,
+    status,
+    createdAt: typeof b.createdAt === 'string' ? b.createdAt : undefined,
+    updatedAt: typeof b.updatedAt === 'string' ? b.updatedAt : undefined,
+    deletedAt: typeof b.deletedAt === 'string' ? b.deletedAt : null,
+    // compatibility helpers
+    id: bucketRefId || String(bucketId),
+    name: bucketName,
+    url: serviceUrl,
+    provider: (b.provider as BucketProvider) ?? 'other',
+    config: (b.config as Record<string, string> | null) ?? null,
+  };
+}
+
+// ---- Admin: Bucket Master ----
+export const BUCKET_MASTER_BASE_URL = '/bucketMaster';
+
+export const bucketMasterApi = {
+  getAllBuckets: async (params: ListParams = {}): Promise<PaginatedResponse<Bucket>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<Bucket>>(`${BUCKET_MASTER_BASE_URL}/getAllBuckets${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeBucket);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getBucket: async (bucketRefId: string): Promise<Bucket> => {
+    const res = await request<ApiResponse<Bucket> | Record<string, unknown>>(
+      `${BUCKET_MASTER_BASE_URL}/getBucket?bucketRefId=${encodeURIComponent(bucketRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeBucket(raw);
+  },
+
+  createBucket: async (body: BucketCreateInput | BucketUpdateInput): Promise<Bucket> => {
+    const payload = {
+      bucketRefId: body.bucketRefId ?? '',
+      bucketName: body.bucketName.trim(),
+      serviceUrl: body.serviceUrl.trim(),
+      status: Number(body.status),
+    };
+    const res = await request<ApiResponse<Bucket> | Record<string, unknown>>(`${BUCKET_MASTER_BASE_URL}/createBucket`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = payload;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeBucket(raw);
+  },
+
+  deleteBucket: async (payload: BucketDeleteInput | string): Promise<void> => {
+    const bucketRefId = typeof payload === 'string' ? payload : payload.bucketRefId;
+    return request<void>(`${BUCKET_MASTER_BASE_URL}/deleteBucket`, {
+      method: 'POST',
+      body: JSON.stringify({ bucketRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => bucketMasterApi.getAllBuckets(params),
+  get: (bucketRefId: string) => bucketMasterApi.getBucket(bucketRefId),
+  create: (body: BucketCreateInput | BucketUpdateInput) => bucketMasterApi.createBucket(body),
+  update: (body: BucketUpdateInput) => bucketMasterApi.createBucket(body),
+  remove: (payload: BucketDeleteInput | string) => bucketMasterApi.deleteBucket(payload),
 };
 
-// ---- Admin: Videos ----
-export const videosApi = {
-  list: (params: ListParams = {}) =>
-    request<PaginatedResponse<Video>>(`/videos${withQuery(params)}`),
-  get: (id: string) => request<Video>(`/videos/${id}`),
-  create: (body: VideoCreateInput) =>
-    request<Video>('/videos', { method: 'POST', body: JSON.stringify(body) }),
-  update: (id: string, body: VideoUpdateInput) =>
-    request<Video>(`/videos/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  remove: (id: string) => request<void>(`/videos/${id}`, { method: 'DELETE' }),
+export const bucketsApi = bucketMasterApi;
+
+export function normalizeVideo(v: Record<string, any>): Video {
+  const videoId = Number(v.videoId ?? v.id ?? 0);
+  const videoRefId = String(v.videoRefId ?? v.id ?? '');
+  const title = String(v.title ?? '');
+  const filename = String(v.filename ?? '');
+  const url = String(v.url ?? '');
+  const sessionId = String(v.sessionId ?? '');
+  const bucketId = String(v.bucketId ?? '');
+
+  return {
+    videoId,
+    videoRefId,
+    title,
+    filename,
+    url,
+    sessionId,
+    bucketId,
+    createdAt: typeof v.createdAt === 'string' ? v.createdAt : undefined,
+    updatedAt: typeof v.updatedAt === 'string' ? v.updatedAt : null,
+    deletedAt: typeof v.deletedAt === 'string' ? v.deletedAt : null,
+    createdBy: typeof v.createdBy === 'number' ? v.createdBy : null,
+    updatedBy: typeof v.updatedBy === 'number' ? v.updatedBy : null,
+    deletedBy: typeof v.deletedBy === 'number' ? v.deletedBy : null,
+    // Compatibility helpers
+    id: videoRefId || String(videoId),
+    signedUrl: typeof v.signedUrl === 'string' ? v.signedUrl : undefined,
+    durationSec: typeof v.durationSec === 'number' ? v.durationSec : undefined,
+  };
+}
+
+// ---- Admin: Video Master ----
+export const VIDEO_MASTER_BASE_URL = '/video';
+
+export const videoMasterApi = {
+  getAllVideos: async (params: ListParams = {}): Promise<PaginatedResponse<Video>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<Video>>(`${VIDEO_MASTER_BASE_URL}/getAllVideos${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeVideo);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getVideo: async (videoRefId: string): Promise<Video> => {
+    const res = await request<ApiResponse<Video> | Record<string, unknown>>(
+      `${VIDEO_MASTER_BASE_URL}/getVideo?videoRefId=${encodeURIComponent(videoRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeVideo(raw);
+  },
+
+  createVideo: async (body: VideoCreateInput | VideoUpdateInput): Promise<Video> => {
+    const payload = {
+      videoRefId: body.videoRefId ?? '',
+      title: (body.title ?? '').trim(),
+      filename: (body.filename ?? '').trim(),
+      url: (body.url ?? '').trim(),
+      sessionId: body.sessionId ?? '',
+      bucketId: body.bucketId ?? '',
+    };
+    const res = await request<ApiResponse<Video> | Record<string, unknown>>(`${VIDEO_MASTER_BASE_URL}/createVideo`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = payload;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeVideo(raw);
+  },
+
+  deleteVideo: async (payload: VideoDeleteInput | string): Promise<void> => {
+    const videoRefId = typeof payload === 'string' ? payload : payload.videoRefId;
+    return request<void>(`${VIDEO_MASTER_BASE_URL}/deleteVideo`, {
+      method: 'POST',
+      body: JSON.stringify({ videoRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => videoMasterApi.getAllVideos(params),
+  get: (videoRefId: string) => videoMasterApi.getVideo(videoRefId),
+  create: (body: VideoCreateInput | VideoUpdateInput) => videoMasterApi.createVideo(body),
+  update: (idOrBody: string | VideoUpdateInput, body?: VideoUpdateInput) => {
+    if (typeof idOrBody === 'string') {
+      return videoMasterApi.createVideo({ ...(body || {}), videoRefId: idOrBody });
+    }
+    return videoMasterApi.createVideo(idOrBody);
+  },
+  remove: (payload: VideoDeleteInput | string) => videoMasterApi.deleteVideo(payload),
 };
+
+export const videosApi = videoMasterApi;
+
+
+export function normalizeUserSessionMapping(m: Record<string, any>): UserSessionMapping {
+  const userSessionId = Number(m.userSessionId ?? m.id ?? 0);
+  const userSessionRefId = String(m.userSessionRefId ?? m.id ?? '');
+  const userId = typeof m.userId === 'number' ? m.userId : (Number(m.userId ?? m.user_id) || String(m.userId ?? m.user_id ?? ''));
+  const sessionId = String(m.sessionId ?? m.sessionRefId ?? '');
+  const status = typeof m.status === 'number' ? m.status : 1;
+
+  return {
+    userSessionId,
+    userSessionRefId,
+    userId,
+    sessionId,
+    status,
+    createdBy: typeof m.createdBy === 'number' ? m.createdBy : null,
+    updatedBy: typeof m.updatedBy === 'number' ? m.updatedBy : null,
+    deletedBy: typeof m.deletedBy === 'number' ? m.deletedBy : null,
+    createdAt: typeof m.createdAt === 'string' ? m.createdAt : undefined,
+    updatedAt: typeof m.updatedAt === 'string' ? m.updatedAt : null,
+    deletedAt: typeof m.deletedAt === 'string' ? m.deletedAt : null,
+    // Compatibility helpers
+    id: userSessionRefId || String(userSessionId),
+    user: m.user,
+    session: m.session,
+  };
+}
 
 // ---- Admin: User-Session Mapping ----
-export const mappingsApi = {
-  list: (params: ListParams = {}) =>
-    request<PaginatedResponse<UserSessionMapping>>(`/mappings${withQuery(params)}`),
-  create: (body: UserSessionMappingInput) =>
-    request<UserSessionMapping>('/mappings', { method: 'POST', body: JSON.stringify(body) }),
-  remove: (id: string) => request<void>(`/mappings/${id}`, { method: 'DELETE' }),
+export const userSessionMappingApi = {
+  getAllUserSessionMappings: async (params: ListParams = {}): Promise<PaginatedResponse<UserSessionMapping>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<UserSessionMapping>>(`${SESSION_MASTER_BASE_URL}/getAllUserSessionMappings${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeUserSessionMapping);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getUserSessionMapping: async (userSessionRefId: string): Promise<UserSessionMapping> => {
+    const res = await request<ApiResponse<UserSessionMapping> | Record<string, unknown>>(
+      `${SESSION_MASTER_BASE_URL}/getUserSessionMapping?userSessionRefId=${encodeURIComponent(userSessionRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeUserSessionMapping(raw);
+  },
+
+  createUserSessionMapping: async (
+    body: UserSessionMappingCreateInput | UserSessionMappingUpdateInput | UserSessionMappingInput
+  ): Promise<UserSessionMapping> => {
+    const payload = {
+      userSessionRefId: body.userSessionRefId ?? '',
+      userId: String(body.userId),
+      sessionId: String(body.sessionId),
+    };
+    const res = await request<ApiResponse<UserSessionMapping> | Record<string, unknown>>(
+      `${SESSION_MASTER_BASE_URL}/createUserSessionMapping`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = payload;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeUserSessionMapping(raw);
+  },
+
+  deleteUserSessionMapping: async (payload: UserSessionMappingDeleteInput | string): Promise<void> => {
+    const userSessionRefId = typeof payload === 'string' ? payload : payload.userSessionRefId;
+    return request<void>(`${SESSION_MASTER_BASE_URL}/deleteUserSessionMapping`, {
+      method: 'POST',
+      body: JSON.stringify({ userSessionRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => userSessionMappingApi.getAllUserSessionMappings(params),
+  get: (userSessionRefId: string) => userSessionMappingApi.getUserSessionMapping(userSessionRefId),
+  create: (body: UserSessionMappingCreateInput | UserSessionMappingInput) =>
+    userSessionMappingApi.createUserSessionMapping(body),
+  update: (
+    idOrBody: string | UserSessionMappingUpdateInput,
+    body?: Partial<UserSessionMappingUpdateInput>
+  ) => {
+    if (typeof idOrBody === 'string') {
+      return userSessionMappingApi.createUserSessionMapping({
+        ...(body || {}),
+        userSessionRefId: idOrBody,
+      } as UserSessionMappingUpdateInput);
+    }
+    return userSessionMappingApi.createUserSessionMapping(idOrBody);
+  },
+  remove: (payload: UserSessionMappingDeleteInput | string) =>
+    userSessionMappingApi.deleteUserSessionMapping(payload),
 };
 
-export function normalizeUser(u: any): any {
+export const mappingsApi = userSessionMappingApi;
+
+export function normalizeUser(u: Record<string, any>): User {
   const id = String(u.user_id ?? u.id ?? u.user_ref_id ?? '');
   const roleStr = String(u.role ?? (u.role_id === 1 ? 'admin' : 'user')).toLowerCase();
   const role: Role = roleStr.includes('admin') ? 'admin' : 'user';

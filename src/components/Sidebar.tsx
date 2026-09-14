@@ -19,6 +19,7 @@ const adminNav: NavItem[] = [
 
 const studentNav: NavItem[] = [
   { to: '/sessions', label: 'My Sessions', icon: PlayCircle },
+  { to: '/mappings', label: 'Mappings', icon: Link2 },
   { to: '/profile', label: 'Profile', icon: UserCircle },
 ];
 

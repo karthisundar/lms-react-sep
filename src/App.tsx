@@ -40,6 +40,7 @@ export default function App() {
             >
               <Route path="/sessions" element={<MySessionsPage />} />
               <Route path="/sessions/:id" element={<SessionPlayerPage />} />
+              <Route path="/mappings" element={<AdminMappingsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
             </Route>
 
