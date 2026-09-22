@@ -5,6 +5,8 @@ import type {
   Video,
   VideoCreateInput,
   VideoDeleteInput,
+  VideoProgress,
+  VideoProgressCreateInput,
   VideoUpdateInput,
 } from '@/types/api';
 
@@ -21,6 +23,12 @@ export const videoService = {
     api.videos.updateVideo(data),
   deleteVideo: (payload: VideoDeleteInput | string): Promise<void> =>
     api.videos.deleteVideo(payload),
+
+  // Video watch progress APIs
+  getVideoProgress: (videoRefId: string): Promise<VideoProgress | null> =>
+    api.videos.getVideoProgress(videoRefId),
+  createVideoProgress: (payload: VideoProgressCreateInput): Promise<void> =>
+    api.videos.createVideoProgress(payload),
 
   // Aliases conforming to standard CRUD naming in other project modules
   list: (params?: ListParams): Promise<PaginatedResponse<Video>> =>

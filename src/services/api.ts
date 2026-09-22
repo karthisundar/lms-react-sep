@@ -12,7 +12,21 @@ import type {
   BucketUpdateInput,
   ClientLabelItem,
   ClientLabelResponse,
+  Course,
+  CourseCreateInput,
+  CourseDeleteInput,
+  CourseUpdateInput,
+  Lesson,
+  LessonCreateInput,
+  LessonDeleteInput,
+  LessonStatus,
+  LessonUpdateInput,
   ListParams,
+  Module,
+  ModuleCreateInput,
+  ModuleDeleteInput,
+  ModuleStatus,
+  ModuleUpdateInput,
   PaginatedResponse,
   Role,
   Session,
@@ -31,6 +45,9 @@ import type {
   Video,
   VideoCreateInput,
   VideoDeleteInput,
+  VideoProgress,
+  VideoProgressApiResponse,
+  VideoProgressCreateInput,
   VideoUpdateInput,
 } from '@/types/api';
 import { ADMIN_ROLE_ID, USER_ROLE_ID } from '@/types/api';
@@ -150,7 +167,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...(options.headers as Record<string, string> | undefined),
   };
   const token = localStorage.getItem('access_token') || getToken();
-  if (token) headers['Authorization'] = `${token}`;
+  if (headers['Authorization'] && !headers['Authorization'].startsWith('Bearer ')) {
+    headers['Authorization'] = `${headers['Authorization']}`;
+  } else if (token && !headers['Authorization']) {
+    headers['Authorization'] = token;//token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+  }
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
 
@@ -697,6 +718,63 @@ export const videoMasterApi = {
     });
   },
 
+  getVideoProgress: async (videoRefId: string): Promise<VideoProgress | null> => {
+    const rawToken = localStorage.getItem('access_token') || getToken();
+    const headers: Record<string, string> = {};
+    if (rawToken) {
+      headers['Authorization'] = rawToken;
+    }
+
+    try {
+      const res = await request<VideoProgressApiResponse | Record<string, any>>(
+        `${VIDEO_MASTER_BASE_URL}/getVideoProgress?videoRefId=${encodeURIComponent(videoRefId)}`,
+        {
+          method: 'GET',
+          headers,
+        }
+      );
+
+      const responseObj = (res || {}) as Record<string, any>;
+      const innerResponse = responseObj.response;
+      const rawData = innerResponse?.data ?? responseObj.data ?? (responseObj.videoRefId ? responseObj : null);
+      const item = Array.isArray(rawData) ? rawData[0] : rawData;
+
+      if (item && typeof item === 'object') {
+        return {
+          videoRefId: String(item.videoRefId ?? videoRefId),
+          videoId: item.videoId !== undefined ? Number(item.videoId) : undefined,
+          lastWatchedDuration: Number(item.lastWatchedDuration ?? 0) || 0,
+          videoDuration: Number(item.videoDuration ?? 0) || 0,
+          isCompleted: Boolean(item.isCompleted ?? item.is_completed ?? false),
+        };
+      }
+      return null;
+    } catch (err) {
+      console.warn('getVideoProgress error:', err);
+      return null;
+    }
+  },
+
+  createVideoProgress: async (body: VideoProgressCreateInput): Promise<void> => {
+    const rawToken = localStorage.getItem('access_token') || getToken();
+    const headers: Record<string, string> = {};
+    if (rawToken) {
+      headers['Authorization'] = rawToken;
+    }
+
+    const payload = {
+      videoRefId: body.videoRefId,
+      lastWatchedDuration: Number(body.lastWatchedDuration),
+      videoDuration: Number(body.videoDuration),
+    };
+
+    await request<unknown>(`${VIDEO_MASTER_BASE_URL}/createVideoProgress`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+  },
+
   // Aliases conforming to standard CRUD naming
   list: (params: ListParams = {}) => videoMasterApi.getAllVideos(params),
   get: (videoRefId: string) => videoMasterApi.getVideo(videoRefId),
@@ -1053,3 +1131,497 @@ export const usersApi = {
   updateUser: (payload: UserUpdateInput | string, body?: UserUpdateInput) => usersApi.update(payload, body),
   deleteUser: (payload: UserDeleteInput | string) => usersApi.remove(payload),
 };
+
+export function normalizeCourse(c: Record<string, any>): Course {
+  const courseId = Number(c.courseId ?? c.id ?? 0);
+  const courseRefId = String(c.courseRefId ?? c.id ?? '');
+  const courseCode = c.courseCode ? String(c.courseCode) : undefined;
+  const courseName = String(c.courseName ?? c.name ?? '');
+  const description = c.description !== undefined && c.description !== null ? String(c.description) : null;
+  const status = String(c.status ?? 'draft');
+
+  return {
+    courseId,
+    courseRefId,
+    courseCode,
+    courseName,
+    description,
+    status,
+    createdAt: typeof c.createdAt === 'string' ? c.createdAt : undefined,
+    updatedAt: typeof c.updatedAt === 'string' ? c.updatedAt : null,
+    deletedAt: typeof c.deletedAt === 'string' ? c.deletedAt : null,
+    createdBy: typeof c.createdBy === 'number' ? c.createdBy : null,
+    updatedBy: typeof c.updatedBy === 'number' ? c.updatedBy : null,
+    deletedBy: typeof c.deletedBy === 'number' ? c.deletedBy : null,
+    // Compatibility helpers
+    id: courseRefId || String(courseId),
+    name: courseName,
+  };
+}
+
+// ---- Admin: Course Master ----
+export const COURSE_BASE_URL = '/course';
+
+export const courseMasterApi = {
+  getAllCourses: async (params: ListParams = {}): Promise<PaginatedResponse<Course>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    if (params.status && params.status !== 'all') sp.set('status', params.status);
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<Course>>(`${COURSE_BASE_URL}/getAllCourses${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeCourse);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getCourse: async (courseRefId: string): Promise<Course> => {
+    const res = await request<ApiResponse<Course> | Record<string, unknown>>(
+      `${COURSE_BASE_URL}/getCourse?courseRefId=${encodeURIComponent(courseRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeCourse(raw);
+  },
+
+  createCourse: async (body: CourseCreateInput | CourseUpdateInput): Promise<Course> => {
+    const isEdit = Boolean(body.courseRefId && String(body.courseRefId).trim());
+    const payload: Record<string, unknown> = {
+      courseName: (body.courseName ?? '').trim(),
+      description: body.description?.trim() ?? '',
+      status: body.status ?? 'draft',
+    };
+    if (isEdit) {
+      payload.courseRefId = body.courseRefId;
+    }
+
+    const res = await request<ApiResponse<Course> | Record<string, unknown>>(`${COURSE_BASE_URL}/createCourse`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = payload;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeCourse(raw);
+  },
+
+  deleteCourse: async (payload: CourseDeleteInput | string): Promise<void> => {
+    const courseRefId = typeof payload === 'string' ? payload : payload.courseRefId;
+    return request<void>(`${COURSE_BASE_URL}/deleteCourse`, {
+      method: 'POST',
+      body: JSON.stringify({ courseRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => courseMasterApi.getAllCourses(params),
+  get: (courseRefId: string) => courseMasterApi.getCourse(courseRefId),
+  create: (body: CourseCreateInput | CourseUpdateInput) => courseMasterApi.createCourse(body),
+  update: (idOrBody: string | CourseUpdateInput, body?: CourseUpdateInput) => {
+    if (typeof idOrBody === 'string') {
+      return courseMasterApi.createCourse({ ...(body || {}), courseRefId: idOrBody, courseName: body?.courseName || '' });
+    }
+    return courseMasterApi.createCourse(idOrBody);
+  },
+  remove: (payload: CourseDeleteInput | string) => courseMasterApi.deleteCourse(payload),
+};
+
+export const coursesApi = courseMasterApi;
+
+// ---- Admin: Module Master ----
+export const MODULE_BASE_URL = '/module';
+
+export function normalizeModule(m: Record<string, any>): Module {
+  const moduleId = Number(m.moduleId ?? m.id ?? 0);
+  const moduleRefId = String(m.moduleRefId ?? m.id ?? '');
+  const courseRefId = String(m.courseRefId ?? '');
+  const courseName = typeof m.courseName === 'string' ? m.courseName : undefined;
+  const moduleCode = typeof m.moduleCode === 'string' ? m.moduleCode : undefined;
+  const moduleName = String(m.moduleName ?? m.name ?? '');
+  const description = typeof m.description === 'string' ? m.description : null;
+  const displayOrder = Number(m.displayOrder ?? 1);
+  const status = (m.status as ModuleStatus) ?? 'draft';
+
+  return {
+    moduleId,
+    moduleRefId,
+    courseRefId,
+    courseName,
+    moduleCode,
+    moduleName,
+    description,
+    displayOrder,
+    status,
+    createdBy: typeof m.createdBy === 'number' ? m.createdBy : null,
+    updatedBy: typeof m.updatedBy === 'number' ? m.updatedBy : null,
+    deletedBy: typeof m.deletedBy === 'number' ? m.deletedBy : null,
+    createdAt: typeof m.createdAt === 'string' ? m.createdAt : undefined,
+    updatedAt: typeof m.updatedAt === 'string' ? m.updatedAt : null,
+    deletedAt: typeof m.deletedAt === 'string' ? m.deletedAt : null,
+    id: moduleRefId || String(moduleId),
+    name: moduleName,
+  };
+}
+
+export const moduleMasterApi = {
+  getAllModules: async (params: ListParams = {}): Promise<PaginatedResponse<Module>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    if (params.status && params.status !== 'all') sp.set('status', params.status);
+    if (params.courseRefId && params.courseRefId !== 'all') sp.set('courseRefId', params.courseRefId);
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<Module>>(`${MODULE_BASE_URL}/getAllModules${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeModule);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getModule: async (moduleRefId: string): Promise<Module> => {
+    const res = await request<ApiResponse<Module> | Record<string, unknown>>(
+      `${MODULE_BASE_URL}/getModule?moduleRefId=${encodeURIComponent(moduleRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeModule(raw);
+  },
+
+  createModule: async (body: ModuleCreateInput | ModuleUpdateInput): Promise<Module> => {
+    const isEdit = Boolean(body.moduleRefId && String(body.moduleRefId).trim());
+    const payload: Record<string, unknown> = {
+      courseRefId: (body.courseRefId ?? '').trim(),
+      moduleName: (body.moduleName ?? '').trim(),
+      description: body.description?.trim() ?? '',
+      displayOrder: Number(body.displayOrder ?? 1),
+      status: body.status ?? 'draft',
+    };
+    if (isEdit) {
+      payload.moduleRefId = body.moduleRefId;
+    }
+
+    const res = await request<ApiResponse<Module> | Record<string, unknown>>(`${MODULE_BASE_URL}/createModule`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = payload;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeModule(raw);
+  },
+
+  deleteModule: async (payload: ModuleDeleteInput | string): Promise<void> => {
+    const moduleRefId = typeof payload === 'string' ? payload : payload.moduleRefId;
+    return request<void>(`${MODULE_BASE_URL}/deleteModule`, {
+      method: 'POST',
+      body: JSON.stringify({ moduleRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => moduleMasterApi.getAllModules(params),
+  get: (moduleRefId: string) => moduleMasterApi.getModule(moduleRefId),
+  create: (body: ModuleCreateInput | ModuleUpdateInput) => moduleMasterApi.createModule(body),
+  update: (idOrBody: string | ModuleUpdateInput, body?: ModuleUpdateInput) => {
+    if (typeof idOrBody === 'string') {
+      return moduleMasterApi.createModule({ ...(body || {}), moduleRefId: idOrBody, courseRefId: body?.courseRefId || '', moduleName: body?.moduleName || '', displayOrder: body?.displayOrder ?? 1 });
+    }
+    return moduleMasterApi.createModule(idOrBody);
+  },
+  remove: (payload: ModuleDeleteInput | string) => moduleMasterApi.deleteModule(payload),
+};
+
+export const modulesApi = moduleMasterApi;
+
+// ---- Admin: Lesson Master ----
+export const LESSON_BASE_URL = '/lesson';
+
+export function normalizeLesson(l: Record<string, any>): Lesson {
+  const lessonId = Number(l.lessonId ?? l.id ?? 0);
+  const lessonRefId = String(l.lessonRefId ?? l.id ?? '');
+  const moduleRefId = String(l.moduleRefId ?? '');
+  const moduleName = typeof l.moduleName === 'string' ? l.moduleName : undefined;
+  const lessonCode = typeof l.lessonCode === 'string' ? l.lessonCode : undefined;
+  const lessonName = String(l.lessonName ?? l.name ?? '');
+  const description = typeof l.description === 'string' ? l.description : null;
+  const videoRefId = typeof l.videoRefId === 'string' && l.videoRefId.trim() ? l.videoRefId.trim() : null;
+  const videoTitle = typeof l.videoTitle === 'string' ? l.videoTitle : (typeof l.video_title === 'string' ? l.video_title : undefined);
+  const notes = typeof l.notes === 'string' ? l.notes : null;
+  const displayOrder = Number(l.displayOrder ?? 1);
+  const status = (l.status as LessonStatus) ?? 'draft';
+
+  return {
+    lessonId,
+    lessonRefId,
+    moduleRefId,
+    moduleName,
+    lessonCode,
+    lessonName,
+    description,
+    videoRefId,
+    videoTitle,
+    notes,
+    displayOrder,
+    status,
+    createdBy: typeof l.createdBy === 'number' ? l.createdBy : null,
+    updatedBy: typeof l.updatedBy === 'number' ? l.updatedBy : null,
+    deletedBy: typeof l.deletedBy === 'number' ? l.deletedBy : null,
+    createdAt: typeof l.createdAt === 'string' ? l.createdAt : undefined,
+    updatedAt: typeof l.updatedAt === 'string' ? l.updatedAt : null,
+    deletedAt: typeof l.deletedAt === 'string' ? l.deletedAt : null,
+    id: lessonRefId || String(lessonId),
+    name: lessonName,
+  };
+}
+
+export const lessonMasterApi = {
+  getAllLessons: async (params: ListParams = {}): Promise<PaginatedResponse<Lesson>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    if (params.status && params.status !== 'all') sp.set('status', params.status);
+    if (params.moduleRefId && params.moduleRefId !== 'all') sp.set('moduleRefId', params.moduleRefId);
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<Lesson>>(`${LESSON_BASE_URL}/getAllLessons${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeLesson);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getLesson: async (lessonRefId: string): Promise<Lesson> => {
+    const res = await request<ApiResponse<Lesson> | Record<string, unknown>>(
+      `${LESSON_BASE_URL}/getLesson?lessonRefId=${encodeURIComponent(lessonRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeLesson(raw);
+  },
+
+  createLesson: async (body: LessonCreateInput | LessonUpdateInput): Promise<Lesson> => {
+    const isEdit = Boolean(body.lessonRefId && String(body.lessonRefId).trim());
+    const payload: Record<string, unknown> = {
+      moduleRefId: (body.moduleRefId ?? '').trim(),
+      lessonName: (body.lessonName ?? '').trim(),
+      description: body.description?.trim() ?? '',
+      videoRefId: body.videoRefId && String(body.videoRefId).trim() ? String(body.videoRefId).trim() : null,
+      notes: body.notes?.trim() ?? '',
+      displayOrder: Number(body.displayOrder ?? 1),
+      status: body.status ?? 'draft',
+    };
+    if (isEdit) {
+      payload.lessonRefId = body.lessonRefId;
+    }
+
+    const res = await request<ApiResponse<Lesson> | Record<string, unknown>>(`${LESSON_BASE_URL}/createLesson`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = payload;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeLesson(raw);
+  },
+
+  deleteLesson: async (payload: LessonDeleteInput | string): Promise<void> => {
+    const lessonRefId = typeof payload === 'string' ? payload : payload.lessonRefId;
+    return request<void>(`${LESSON_BASE_URL}/deleteLesson`, {
+      method: 'POST',
+      body: JSON.stringify({ lessonRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => lessonMasterApi.getAllLessons(params),
+  get: (lessonRefId: string) => lessonMasterApi.getLesson(lessonRefId),
+  create: (body: LessonCreateInput | LessonUpdateInput) => lessonMasterApi.createLesson(body),
+  update: (idOrBody: string | LessonUpdateInput, body?: LessonUpdateInput) => {
+    if (typeof idOrBody === 'string') {
+      return lessonMasterApi.createLesson({ ...(body || {}), lessonRefId: idOrBody, moduleRefId: body?.moduleRefId || '', lessonName: body?.lessonName || '', displayOrder: body?.displayOrder ?? 1 });
+    }
+    return lessonMasterApi.createLesson(idOrBody);
+  },
+  remove: (payload: LessonDeleteInput | string) => lessonMasterApi.deleteLesson(payload),
+};
+
+export const lessonsApi = lessonMasterApi;
+
+

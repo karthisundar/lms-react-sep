@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, CirclePlay as PlayCircle, Database, Film, Link2, Users, CircleUser as UserCircle, X } from 'lucide-react';
+import { LayoutDashboard, CirclePlay as PlayCircle, Database, Film, Link2, Users, CircleUser as UserCircle, X, BookOpen, Layers, GraduationCap } from 'lucide-react';
 import type { Role } from '@/types/api';
 
 interface NavItem {
@@ -11,10 +11,13 @@ interface NavItem {
 const adminNav: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/courses', label: 'Courses', icon: BookOpen },
+  { to: '/admin/modules', label: 'Modules', icon: Layers },
+  { to: '/admin/lessons', label: 'Lessons', icon: GraduationCap },
   { to: '/admin/sessions', label: 'Sessions', icon: PlayCircle },
   { to: '/admin/buckets', label: 'Buckets', icon: Database },
   { to: '/admin/videos', label: 'Videos', icon: Film },
-  { to: '/admin/mappings', label: 'User Session Mapping', icon: Link2 },
+  { to: '/admin/mappings', label: 'Mappings', icon: Link2 },
   { to: '/profile', label: 'Profile', icon: UserCircle },
 ];
 
@@ -30,7 +33,23 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ role, open, onClose }: SidebarProps) {
-  const items = role === 'admin' ? adminNav : studentNav;
+  const baseItems = role === 'admin' ? adminNav : studentNav;
+  const items = role === 'admin'
+    ? baseItems
+    : baseItems.filter(
+        (item) =>
+          !item.to.toLowerCase().includes('mapping') &&
+          !item.label.toLowerCase().includes('mapping') &&
+          !item.to.toLowerCase().includes('course') &&
+          !item.label.toLowerCase().includes('course') &&
+          !item.to.toLowerCase().includes('module') &&
+          !item.label.toLowerCase().includes('module') &&
+          !item.to.toLowerCase().includes('lesson') &&
+          !item.label.toLowerCase().includes('lesson')
+      );
+
+
+
 
   return (
     <>

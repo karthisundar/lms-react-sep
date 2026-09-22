@@ -289,6 +289,8 @@ export interface ListParams {
   status?: string;
   sessionId?: string;
   sessionRefId?: string;
+  courseRefId?: string;
+  moduleRefId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -297,3 +299,169 @@ export interface ApiError {
   message: string;
   status?: number;
 }
+
+export interface VideoProgress {
+  videoRefId: string;
+  videoId?: number;
+  lastWatchedDuration: number;
+  videoDuration: number;
+  isCompleted: boolean;
+}
+
+export interface VideoProgressCreateInput {
+  videoRefId: string;
+  lastWatchedDuration: number;
+  videoDuration: number;
+}
+
+export interface VideoProgressApiResponse {
+  statusCode: number;
+  response: {
+    code?: string;
+    data: VideoProgress[];
+  };
+}
+
+export type CourseStatus = 'draft' | 'published' | 'active' | 'inactive' | string;
+
+export interface Course {
+  courseId: number;
+  courseRefId: string;
+  courseCode?: string;
+  courseName: string;
+  description: string | null;
+  status: CourseStatus;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  deletedBy?: number | null;
+  createdAt?: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+  // Compatibility helpers
+  id: string;
+  name: string;
+}
+
+export interface CourseCreateInput {
+  courseRefId?: string;
+  courseName: string;
+  description?: string;
+  status?: CourseStatus;
+}
+
+export interface CourseUpdateInput {
+  courseRefId: string;
+  courseName: string;
+  description?: string;
+  status?: CourseStatus;
+}
+
+export interface CourseDeleteInput {
+  courseRefId: string;
+}
+
+// Module Master Types
+export type ModuleStatus = 'draft' | 'published' | 'active' | 'inactive' | string;
+
+export interface ModuleItem {
+  moduleId?: number;
+  moduleRefId: string;
+  courseRefId: string;
+  courseName?: string;
+  moduleCode?: string;
+  moduleName: string;
+  description?: string | null;
+  displayOrder: number;
+  status: ModuleStatus;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  deletedBy?: number | null;
+  createdAt?: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+  // Compatibility helpers
+  id: string;
+  name: string;
+}
+
+export type Module = ModuleItem;
+
+export interface ModuleCreateInput {
+  moduleRefId?: string;
+  courseRefId: string;
+  moduleName: string;
+  description?: string;
+  displayOrder: number;
+  status?: ModuleStatus;
+}
+
+export interface ModuleUpdateInput {
+  moduleRefId: string;
+  courseRefId: string;
+  moduleName: string;
+  description?: string;
+  displayOrder: number;
+  status?: ModuleStatus;
+}
+
+export interface ModuleDeleteInput {
+  moduleRefId: string;
+}
+
+// Lesson Master Types
+export type LessonStatus = 'draft' | 'published' | 'active' | 'inactive' | string;
+
+export interface LessonItem {
+  lessonId?: number;
+  lessonRefId: string;
+  moduleRefId: string;
+  moduleName?: string;
+  lessonCode?: string;
+  lessonName: string;
+  description?: string | null;
+  videoRefId?: string | null;
+  videoTitle?: string;
+  notes?: string | null;
+  displayOrder: number;
+  status: LessonStatus;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  deletedBy?: number | null;
+  createdAt?: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+  // Compatibility helpers
+  id: string;
+  name: string;
+}
+
+export type Lesson = LessonItem;
+
+export interface LessonCreateInput {
+  lessonRefId?: string;
+  moduleRefId: string;
+  lessonName: string;
+  description?: string;
+  videoRefId?: string | null;
+  notes?: string;
+  displayOrder: number;
+  status?: LessonStatus;
+}
+
+export interface LessonUpdateInput {
+  lessonRefId: string;
+  moduleRefId: string;
+  lessonName: string;
+  description?: string;
+  videoRefId?: string | null;
+  notes?: string;
+  displayOrder: number;
+  status?: LessonStatus;
+}
+
+export interface LessonDeleteInput {
+  lessonRefId: string;
+}
+
+
+

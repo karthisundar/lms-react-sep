@@ -87,6 +87,8 @@ export function getVideoProvider(url?: string | null): VideoProvider {
 /**
  * Builds the embeddable YouTube iframe URL for a given video ID.
  */
-export function getYouTubeEmbedUrl(videoId: string): string {
-  return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}`;
+export function getYouTubeEmbedUrl(videoId: string, startTime = 0): string {
+  const origin = typeof window !== 'undefined' && window.location?.origin ? `&origin=${encodeURIComponent(window.location.origin)}` : '';
+  const start = startTime > 0 ? `&start=${Math.floor(startTime)}` : '';
+  return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1${origin}${start}`;
 }

@@ -8,7 +8,19 @@ import type {
   BucketCreateInput,
   BucketDeleteInput,
   BucketUpdateInput,
+  Course,
+  CourseCreateInput,
+  CourseDeleteInput,
+  CourseUpdateInput,
+  Lesson,
+  LessonCreateInput,
+  LessonDeleteInput,
+  LessonUpdateInput,
   ListParams,
+  Module,
+  ModuleCreateInput,
+  ModuleDeleteInput,
+  ModuleUpdateInput,
   PaginatedResponse,
   Session,
   SessionCreateInput,
@@ -26,15 +38,23 @@ import type {
   Video,
   VideoCreateInput,
   VideoDeleteInput,
+  VideoProgress,
+  VideoProgressCreateInput,
   VideoUpdateInput,
 } from '@/types/api';
 import {
   authApi,
   bucketMasterApi,
   clearSession,
+  courseMasterApi,
+  coursesApi,
   getStoredUser,
   getToken,
   mappingsApi,
+  moduleMasterApi,
+  modulesApi,
+  lessonMasterApi,
+  lessonsApi,
   profileApi,
   sessionMasterApi,
   sessionsApi,
@@ -79,6 +99,146 @@ export const api = {
     videoForSession: (sessionId: string): Promise<Video> =>
       isDemoMode ? demoApi.videoForSession(sessionId) : studentApi.videoForSession(sessionId),
   },
+
+  courseMaster: {
+    getAllCourses: (params?: ListParams): Promise<PaginatedResponse<Course>> =>
+      isDemoMode ? demoApi.courses.list(params) : courseMasterApi.getAllCourses(params),
+    getCourse: (courseRefId: string): Promise<Course> =>
+      isDemoMode ? demoApi.courses.get(courseRefId) : courseMasterApi.getCourse(courseRefId),
+    createCourse: (body: CourseCreateInput | CourseUpdateInput): Promise<Course> =>
+      isDemoMode ? demoApi.courses.create(body) : courseMasterApi.createCourse(body),
+    updateCourse: (body: CourseUpdateInput): Promise<Course> =>
+      isDemoMode ? demoApi.courses.create(body) : courseMasterApi.createCourse(body),
+    deleteCourse: (payload: CourseDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.courses.remove(typeof payload === 'string' ? payload : payload.courseRefId) : courseMasterApi.deleteCourse(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<Course>> =>
+      isDemoMode ? demoApi.courses.list(params) : courseMasterApi.getAllCourses(params),
+    get: (courseRefId: string): Promise<Course> =>
+      isDemoMode ? demoApi.courses.get(courseRefId) : courseMasterApi.getCourse(courseRefId),
+    create: (body: CourseCreateInput | CourseUpdateInput): Promise<Course> =>
+      isDemoMode ? demoApi.courses.create(body) : courseMasterApi.createCourse(body),
+    update: (body: CourseUpdateInput): Promise<Course> =>
+      isDemoMode ? demoApi.courses.create(body) : courseMasterApi.createCourse(body),
+    remove: (payload: CourseDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.courses.remove(typeof payload === 'string' ? payload : payload.courseRefId) : courseMasterApi.deleteCourse(payload),
+  },
+
+  courses: {
+    getAllCourses: (params?: ListParams): Promise<PaginatedResponse<Course>> =>
+      isDemoMode ? demoApi.courses.list(params) : courseMasterApi.getAllCourses(params),
+    getCourse: (courseRefId: string): Promise<Course> =>
+      isDemoMode ? demoApi.courses.get(courseRefId) : courseMasterApi.getCourse(courseRefId),
+    createCourse: (body: CourseCreateInput | CourseUpdateInput): Promise<Course> =>
+      isDemoMode ? demoApi.courses.create(body) : courseMasterApi.createCourse(body),
+    updateCourse: (body: CourseUpdateInput): Promise<Course> =>
+      isDemoMode ? demoApi.courses.create(body) : courseMasterApi.createCourse(body),
+    deleteCourse: (payload: CourseDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.courses.remove(typeof payload === 'string' ? payload : payload.courseRefId) : courseMasterApi.deleteCourse(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<Course>> =>
+      isDemoMode ? demoApi.courses.list(params) : courseMasterApi.getAllCourses(params),
+    get: (courseRefId: string): Promise<Course> =>
+      isDemoMode ? demoApi.courses.get(courseRefId) : courseMasterApi.getCourse(courseRefId),
+    create: (body: CourseCreateInput | CourseUpdateInput): Promise<Course> =>
+      isDemoMode ? demoApi.courses.create(body) : courseMasterApi.createCourse(body),
+    update: (body: CourseUpdateInput): Promise<Course> =>
+      isDemoMode ? demoApi.courses.create(body) : courseMasterApi.createCourse(body),
+    remove: (payload: CourseDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.courses.remove(typeof payload === 'string' ? payload : payload.courseRefId) : courseMasterApi.deleteCourse(payload),
+  },
+
+  moduleMaster: {
+    getAllModules: (params?: ListParams): Promise<PaginatedResponse<Module>> =>
+      isDemoMode ? demoApi.modules.list(params) : moduleMasterApi.getAllModules(params),
+    getModule: (moduleRefId: string): Promise<Module> =>
+      isDemoMode ? demoApi.modules.get(moduleRefId) : moduleMasterApi.getModule(moduleRefId),
+    createModule: (body: ModuleCreateInput | ModuleUpdateInput): Promise<Module> =>
+      isDemoMode ? demoApi.modules.create(body) : moduleMasterApi.createModule(body),
+    updateModule: (body: ModuleUpdateInput): Promise<Module> =>
+      isDemoMode ? demoApi.modules.create(body) : moduleMasterApi.createModule(body),
+    deleteModule: (payload: ModuleDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.modules.remove(typeof payload === 'string' ? payload : payload.moduleRefId) : moduleMasterApi.deleteModule(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<Module>> =>
+      isDemoMode ? demoApi.modules.list(params) : moduleMasterApi.getAllModules(params),
+    get: (moduleRefId: string): Promise<Module> =>
+      isDemoMode ? demoApi.modules.get(moduleRefId) : moduleMasterApi.getModule(moduleRefId),
+    create: (body: ModuleCreateInput | ModuleUpdateInput): Promise<Module> =>
+      isDemoMode ? demoApi.modules.create(body) : moduleMasterApi.createModule(body),
+    update: (body: ModuleUpdateInput): Promise<Module> =>
+      isDemoMode ? demoApi.modules.create(body) : moduleMasterApi.createModule(body),
+    remove: (payload: ModuleDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.modules.remove(typeof payload === 'string' ? payload : payload.moduleRefId) : moduleMasterApi.deleteModule(payload),
+  },
+
+  modules: {
+    getAllModules: (params?: ListParams): Promise<PaginatedResponse<Module>> =>
+      isDemoMode ? demoApi.modules.list(params) : moduleMasterApi.getAllModules(params),
+    getModule: (moduleRefId: string): Promise<Module> =>
+      isDemoMode ? demoApi.modules.get(moduleRefId) : moduleMasterApi.getModule(moduleRefId),
+    createModule: (body: ModuleCreateInput | ModuleUpdateInput): Promise<Module> =>
+      isDemoMode ? demoApi.modules.create(body) : moduleMasterApi.createModule(body),
+    updateModule: (body: ModuleUpdateInput): Promise<Module> =>
+      isDemoMode ? demoApi.modules.create(body) : moduleMasterApi.createModule(body),
+    deleteModule: (payload: ModuleDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.modules.remove(typeof payload === 'string' ? payload : payload.moduleRefId) : moduleMasterApi.deleteModule(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<Module>> =>
+      isDemoMode ? demoApi.modules.list(params) : moduleMasterApi.getAllModules(params),
+    get: (id: string): Promise<Module> =>
+      isDemoMode ? demoApi.modules.get(id) : moduleMasterApi.getModule(id),
+    create: (body: ModuleCreateInput | ModuleUpdateInput): Promise<Module> =>
+      isDemoMode ? demoApi.modules.create(body) : moduleMasterApi.createModule(body),
+    update: (id: string, body: ModuleUpdateInput): Promise<Module> =>
+      isDemoMode ? demoApi.modules.create({ ...body, moduleRefId: id }) : moduleMasterApi.createModule({ ...body, moduleRefId: id }),
+    remove: (id: string): Promise<void> =>
+      isDemoMode ? demoApi.modules.remove(id) : moduleMasterApi.deleteModule({ moduleRefId: id }),
+  },
+
+  lessonMaster: {
+    getAllLessons: (params?: ListParams): Promise<PaginatedResponse<Lesson>> =>
+      isDemoMode ? demoApi.lessons.list(params) : lessonMasterApi.getAllLessons(params),
+    getLesson: (lessonRefId: string): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.get(lessonRefId) : lessonMasterApi.getLesson(lessonRefId),
+    createLesson: (body: LessonCreateInput | LessonUpdateInput): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.create(body) : lessonMasterApi.createLesson(body),
+    updateLesson: (body: LessonUpdateInput): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.create(body) : lessonMasterApi.createLesson(body),
+    deleteLesson: (payload: LessonDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.lessons.remove(typeof payload === 'string' ? payload : payload.lessonRefId) : lessonMasterApi.deleteLesson(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<Lesson>> =>
+      isDemoMode ? demoApi.lessons.list(params) : lessonMasterApi.getAllLessons(params),
+    get: (lessonRefId: string): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.get(lessonRefId) : lessonMasterApi.getLesson(lessonRefId),
+    create: (body: LessonCreateInput | LessonUpdateInput): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.create(body) : lessonMasterApi.createLesson(body),
+    update: (body: LessonUpdateInput): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.create(body) : lessonMasterApi.createLesson(body),
+    remove: (payload: LessonDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.lessons.remove(typeof payload === 'string' ? payload : payload.lessonRefId) : lessonMasterApi.deleteLesson(payload),
+  },
+
+  lessons: {
+    getAllLessons: (params?: ListParams): Promise<PaginatedResponse<Lesson>> =>
+      isDemoMode ? demoApi.lessons.list(params) : lessonMasterApi.getAllLessons(params),
+    getLesson: (lessonRefId: string): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.get(lessonRefId) : lessonMasterApi.getLesson(lessonRefId),
+    createLesson: (body: LessonCreateInput | LessonUpdateInput): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.create(body) : lessonMasterApi.createLesson(body),
+    updateLesson: (body: LessonUpdateInput): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.create(body) : lessonMasterApi.createLesson(body),
+    deleteLesson: (payload: LessonDeleteInput | string): Promise<void> =>
+      isDemoMode ? demoApi.lessons.remove(typeof payload === 'string' ? payload : payload.lessonRefId) : lessonMasterApi.deleteLesson(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<Lesson>> =>
+      isDemoMode ? demoApi.lessons.list(params) : lessonMasterApi.getAllLessons(params),
+    get: (id: string): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.get(id) : lessonMasterApi.getLesson(id),
+    create: (body: LessonCreateInput | LessonUpdateInput): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.create(body) : lessonMasterApi.createLesson(body),
+    update: (id: string, body: LessonUpdateInput): Promise<Lesson> =>
+      isDemoMode ? demoApi.lessons.create({ ...body, lessonRefId: id }) : lessonMasterApi.createLesson({ ...body, lessonRefId: id }),
+    remove: (id: string): Promise<void> =>
+      isDemoMode ? demoApi.lessons.remove(id) : lessonMasterApi.deleteLesson({ lessonRefId: id }),
+  },
+
+
 
   sessionMaster: {
     getAllSessions: (params?: ListParams): Promise<PaginatedResponse<Session>> =>
@@ -171,6 +331,10 @@ export const api = {
       isDemoMode ? demoApi.videos.create(body) : videoMasterApi.createVideo(body),
     remove: (payload: VideoDeleteInput | string): Promise<void> =>
       isDemoMode ? demoApi.videos.remove(typeof payload === 'string' ? payload : payload.videoRefId) : videoMasterApi.deleteVideo(payload),
+    getVideoProgress: (videoRefId: string): Promise<VideoProgress | null> =>
+      isDemoMode ? demoApi.videos.getVideoProgress(videoRefId) : videoMasterApi.getVideoProgress(videoRefId),
+    createVideoProgress: (payload: VideoProgressCreateInput): Promise<void> =>
+      isDemoMode ? demoApi.videos.createVideoProgress(payload) : videoMasterApi.createVideoProgress(payload),
   },
 
   videos: {
@@ -194,6 +358,10 @@ export const api = {
       isDemoMode ? demoApi.videos.create({ ...body, videoRefId: id }) : videoMasterApi.createVideo({ ...body, videoRefId: id }),
     remove: (id: string): Promise<void> =>
       isDemoMode ? demoApi.videos.remove(id) : videoMasterApi.deleteVideo({ videoRefId: id }),
+    getVideoProgress: (videoRefId: string): Promise<VideoProgress | null> =>
+      isDemoMode ? demoApi.videos.getVideoProgress(videoRefId) : videoMasterApi.getVideoProgress(videoRefId),
+    createVideoProgress: (payload: VideoProgressCreateInput): Promise<void> =>
+      isDemoMode ? demoApi.videos.createVideoProgress(payload) : videoMasterApi.createVideoProgress(payload),
   },
 
   userSessionMapping: {
@@ -268,10 +436,17 @@ export const api = {
   },
 };
 
+
 export { userService } from './userService';
 export { bucketMasterService } from './bucketMasterService';
 export { sessionMasterService } from './sessionMasterService';
 export { videoService, videoMasterService } from './videoService';
 export { userSessionMappingService, mappingService } from './userSessionMappingService';
+export { courseService, courseMasterService } from './courseService';
+export { moduleService, moduleMasterService } from './moduleService';
+export { lessonService, lessonMasterService } from './lessonService';
+
+
+
 
 

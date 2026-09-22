@@ -11,10 +11,14 @@ import SessionsRoutingPage from '@/pages/SessionsRoutingPage';
 
 import AdminDashboard from '@/pages/admin/AdminDashboard';
 import AdminUsersPage from '@/pages/admin/AdminUsersPage';
+import AdminCoursesPage from '@/pages/admin/AdminCoursesPage';
+import AdminModulesPage from '@/pages/admin/AdminModulesPage';
+import AdminLessonsPage from '@/pages/admin/AdminLessonsPage';
 import AdminSessionsPage from '@/pages/admin/AdminSessionsPage';
 import AdminBucketsPage from '@/pages/admin/AdminBucketsPage';
 import AdminVideosPage from '@/pages/admin/AdminVideosPage';
 import AdminMappingsPage from '@/pages/admin/AdminMappingsPage';
+
 
 function RoleRedirect() {
   const { user } = useAuth();
@@ -54,6 +58,12 @@ export default function App() {
             >
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
+              <Route path="/admin/courses" element={<AdminCoursesPage />} />
+              <Route path="/courses" element={<Navigate to="/admin/courses" replace />} />
+              <Route path="/admin/modules" element={<AdminModulesPage />} />
+              <Route path="/modules" element={<Navigate to="/admin/modules" replace />} />
+              <Route path="/admin/lessons" element={<AdminLessonsPage />} />
+              <Route path="/lessons" element={<Navigate to="/admin/lessons" replace />} />
               <Route path="/admin/sessions" element={<AdminSessionsPage />} />
               <Route path="/sessions/create" element={<AdminSessionsPage initialMode="create" />} />
               <Route path="/sessions/edit/:id" element={<AdminSessionsPage initialMode="edit" />} />

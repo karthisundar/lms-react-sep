@@ -8,6 +8,9 @@ import type {
   Bucket,
   BucketCreateInput,
   BucketUpdateInput,
+  Course,
+  Lesson,
+  Module,
   PaginatedResponse,
   Session,
   User,
@@ -15,10 +18,14 @@ import type {
   UserSessionMapping,
   UserUpdateInput,
   Video,
+  VideoProgress,
+  VideoProgressCreateInput,
 } from '@/types/api';
 import { getStoredUser, getToken, getUserFromToken } from './api';
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms));
+
+const demoVideoProgressStore = new Map<string, VideoProgress>();
 
 const admin: User = {
   id: 'u-admin',
@@ -248,6 +255,205 @@ const mappings: UserSessionMapping[] = [
 ];
 
 const users: User[] = [admin, student, inactiveUser];
+
+const courses: Course[] = [
+  {
+    courseId: 1,
+    courseRefId: 'uuid-course-1',
+    courseCode: 'CRS-101',
+    courseName: 'Node JS Fundamentals',
+    description: 'Complete Node.js fundamentals with Express and backend architecture.',
+    status: 'published',
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-01T09:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-course-1',
+    name: 'Node JS Fundamentals',
+  },
+  {
+    courseId: 2,
+    courseRefId: 'uuid-course-2',
+    courseCode: 'CRS-102',
+    courseName: 'React & TypeScript Mastery',
+    description: 'Modern frontend development using React 18, TypeScript, and TailwindCSS.',
+    status: 'published',
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-10T11:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-course-2',
+    name: 'React & TypeScript Mastery',
+  },
+  {
+    courseId: 3,
+    courseRefId: 'uuid-course-3',
+    courseCode: 'CRS-103',
+    courseName: 'Fullstack Next.js Application Architecture',
+    description: 'Production-ready fullstack web applications with App Router and server actions.',
+    status: 'draft',
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-20T14:30:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-course-3',
+    name: 'Fullstack Next.js Application Architecture',
+  },
+];
+
+const modules: Module[] = [
+  {
+    moduleId: 1,
+    moduleRefId: 'uuid-module-1',
+    courseRefId: 'uuid-course-1',
+    courseName: 'Node JS Fundamentals',
+    moduleCode: 'MOD-101',
+    moduleName: 'Node Runtime & Asynchronous JavaScript',
+    description: 'Event loop, callbacks, promises, and the async/await paradigm in Node.js.',
+    displayOrder: 1,
+    status: 'published',
+    createdAt: '2026-08-02T10:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-module-1',
+    name: 'Node Runtime & Asynchronous JavaScript',
+  },
+  {
+    moduleId: 2,
+    moduleRefId: 'uuid-module-2',
+    courseRefId: 'uuid-course-1',
+    courseName: 'Node JS Fundamentals',
+    moduleCode: 'MOD-102',
+    moduleName: 'Building RESTful APIs with Express',
+    description: 'Routing, middleware, error handling, and request validation in Express.',
+    displayOrder: 2,
+    status: 'published',
+    createdAt: '2026-08-04T12:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-module-2',
+    name: 'Building RESTful APIs with Express',
+  },
+  {
+    moduleId: 3,
+    moduleRefId: 'uuid-module-3',
+    courseRefId: 'uuid-course-2',
+    courseName: 'React & TypeScript Mastery',
+    moduleCode: 'MOD-201',
+    moduleName: 'Component Lifecycle & Advanced Hooks',
+    description: 'Deep dive into useEffect, useCallback, useMemo, and custom hooks.',
+    displayOrder: 1,
+    status: 'published',
+    createdAt: '2026-08-12T09:30:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-module-3',
+    name: 'Component Lifecycle & Advanced Hooks',
+  },
+  {
+    moduleId: 4,
+    moduleRefId: 'uuid-module-4',
+    courseRefId: 'uuid-course-2',
+    courseName: 'React & TypeScript Mastery',
+    moduleCode: 'MOD-202',
+    moduleName: 'State Management & Performance Optimization',
+    description: 'Context API, memoization techniques, and rendering performance.',
+    displayOrder: 2,
+    status: 'draft',
+    createdAt: '2026-08-15T15:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-module-4',
+    name: 'State Management & Performance Optimization',
+  },
+];
+
+const lessons: Lesson[] = [
+  {
+    lessonId: 1,
+    lessonRefId: 'uuid-lesson-1',
+    moduleRefId: 'uuid-module-1',
+    moduleName: 'Node Runtime & Asynchronous JavaScript',
+    lessonCode: 'LSN-101',
+    lessonName: 'Introduction to Node.js Architecture',
+    description: 'Learn the core V8 engine and libuv event loop architecture in Node.js.',
+    videoRefId: 'uuid-video-1',
+    videoTitle: 'Intro to TypeScript — Full Recording',
+    notes: 'Read the official Node.js documentation on the event loop and thread pool.',
+    displayOrder: 1,
+    status: 'published',
+    createdAt: '2026-08-03T10:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-lesson-1',
+    name: 'Introduction to Node.js Architecture',
+  },
+  {
+    lessonId: 2,
+    lessonRefId: 'uuid-lesson-2',
+    moduleRefId: 'uuid-module-1',
+    moduleName: 'Node Runtime & Asynchronous JavaScript',
+    lessonCode: 'LSN-102',
+    lessonName: 'Asynchronous Programming with Async/Await',
+    description: 'Mastering promises, async/await, and error handling patterns in asynchronous code.',
+    videoRefId: 'uuid-video-2',
+    videoTitle: 'React Hooks Deep Dive — Full Recording',
+    notes: 'Practice transforming callback-based code into modern async/await syntax.',
+    displayOrder: 2,
+    status: 'published',
+    createdAt: '2026-08-05T14:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-lesson-2',
+    name: 'Asynchronous Programming with Async/Await',
+  },
+  {
+    lessonId: 3,
+    lessonRefId: 'uuid-lesson-3',
+    moduleRefId: 'uuid-module-2',
+    moduleName: 'Building RESTful APIs with Express',
+    lessonCode: 'LSN-201',
+    lessonName: 'Express Middleware & Request Lifecycle',
+    description: 'Deep dive into middleware chains, next(), and custom error handlers.',
+    videoRefId: 'uuid-video-3',
+    videoTitle: 'Supabase RLS — Full Recording',
+    notes: 'Review middleware execution order and write custom request timing middleware.',
+    displayOrder: 1,
+    status: 'published',
+    createdAt: '2026-08-07T11:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-lesson-3',
+    name: 'Express Middleware & Request Lifecycle',
+  },
+  {
+    lessonId: 4,
+    lessonRefId: 'uuid-lesson-4',
+    moduleRefId: 'uuid-module-3',
+    moduleName: 'Component Lifecycle & Advanced Hooks',
+    lessonCode: 'LSN-301',
+    lessonName: 'Custom Hooks Architecture & Clean Code',
+    description: 'Extracting reusable stateful logic into custom React hooks.',
+    videoRefId: null,
+    videoTitle: undefined,
+    notes: 'Create custom useDebounce and useLocalStorage hooks.',
+    displayOrder: 1,
+    status: 'draft',
+    createdAt: '2026-08-14T16:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-lesson-4',
+    name: 'Custom Hooks Architecture & Clean Code',
+  },
+];
+
+
 
 function paginate<T>(items: T[], search: string | undefined, page = 1, pageSize = 10): PaginatedResponse<T> {
   const filtered = search
@@ -559,6 +765,19 @@ export const demoApi = {
       const i = videos.findIndex((x) => x.videoRefId === id || x.id === id);
       if (i >= 0) videos.splice(i, 1);
     },
+    async getVideoProgress(videoRefId: string): Promise<VideoProgress | null> {
+      await delay(50);
+      return demoVideoProgressStore.get(videoRefId) || null;
+    },
+    async createVideoProgress(payload: VideoProgressCreateInput): Promise<void> {
+      await delay(50);
+      demoVideoProgressStore.set(payload.videoRefId, {
+        videoRefId: payload.videoRefId,
+        lastWatchedDuration: payload.lastWatchedDuration,
+        videoDuration: payload.videoDuration,
+        isCompleted: payload.lastWatchedDuration >= payload.videoDuration && payload.videoDuration > 0,
+      });
+    },
   },
 
   mappings: {
@@ -780,7 +999,197 @@ export const demoApi = {
       return demoApi.users.remove(id);
     },
   },
+
+  courses: {
+    async list(params: { search?: string; status?: string; page?: number; pageSize?: number } = {}) {
+      await delay();
+      let list = courses;
+      if (params.status && params.status !== 'all') {
+        list = list.filter((c) => String(c.status).toLowerCase() === params.status?.toLowerCase());
+      }
+      return paginate(list, params.search, params.page, params.pageSize);
+    },
+    async get(refOrId: string) {
+      await delay();
+      const c = courses.find((x) => x.courseRefId === refOrId || x.id === refOrId);
+      if (!c) throw Object.assign(new Error('Course not found'), { status: 404 });
+      return c;
+    },
+    async create(body: any) {
+      await delay();
+      const refId = body.courseRefId && String(body.courseRefId).trim() ? body.courseRefId : `uuid-${Date.now()}`;
+      const existingIdx = courses.findIndex((x) => x.courseRefId === body.courseRefId || x.id === body.courseRefId);
+      if (existingIdx >= 0) {
+        courses[existingIdx] = {
+          ...courses[existingIdx],
+          courseName: body.courseName ?? courses[existingIdx].courseName,
+          name: body.courseName ?? courses[existingIdx].courseName,
+          description: body.description !== undefined ? body.description : courses[existingIdx].description,
+          status: body.status ?? courses[existingIdx].status,
+          updatedAt: new Date().toISOString(),
+        };
+        return courses[existingIdx];
+      }
+      const newId = courses.length + 1;
+      const c: Course = {
+        courseId: newId,
+        courseRefId: refId,
+        courseCode: `CRS-${100 + newId}`,
+        courseName: body.courseName ?? '',
+        name: body.courseName ?? '',
+        description: body.description ?? null,
+        status: body.status ?? 'draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: null,
+        deletedAt: null,
+        id: refId,
+      };
+      courses.unshift(c);
+      return c;
+    },
+    async remove(refOrId: string) {
+      await delay();
+      const i = courses.findIndex((x) => x.courseRefId === refOrId || x.id === refOrId);
+      if (i >= 0) courses.splice(i, 1);
+    },
+  },
+
+  modules: {
+    async list(params: { search?: string; status?: string; courseRefId?: string; page?: number; pageSize?: number } = {}) {
+      await delay();
+      let list = modules;
+      if (params.courseRefId && params.courseRefId !== 'all') {
+        list = list.filter((m) => m.courseRefId === params.courseRefId);
+      }
+      if (params.status && params.status !== 'all') {
+        list = list.filter((m) => String(m.status).toLowerCase() === params.status?.toLowerCase());
+      }
+      return paginate(list, params.search, params.page, params.pageSize);
+    },
+    async get(refOrId: string) {
+      await delay();
+      const m = modules.find((x) => x.moduleRefId === refOrId || x.id === refOrId);
+      if (!m) throw Object.assign(new Error('Module not found'), { status: 404 });
+      return m;
+    },
+    async create(body: any) {
+      await delay();
+      const refId = body.moduleRefId && String(body.moduleRefId).trim() ? body.moduleRefId : `uuid-${Date.now()}`;
+      const course = courses.find((c) => c.courseRefId === body.courseRefId || c.id === body.courseRefId);
+      const existingIdx = modules.findIndex((x) => x.moduleRefId === body.moduleRefId || x.id === body.moduleRefId);
+      if (existingIdx >= 0) {
+        modules[existingIdx] = {
+          ...modules[existingIdx],
+          courseRefId: body.courseRefId ?? modules[existingIdx].courseRefId,
+          courseName: course ? course.courseName : modules[existingIdx].courseName,
+          moduleName: body.moduleName ?? modules[existingIdx].moduleName,
+          name: body.moduleName ?? modules[existingIdx].moduleName,
+          description: body.description !== undefined ? body.description : modules[existingIdx].description,
+          displayOrder: Number(body.displayOrder ?? modules[existingIdx].displayOrder),
+          status: body.status ?? modules[existingIdx].status,
+          updatedAt: new Date().toISOString(),
+        };
+        return modules[existingIdx];
+      }
+      const newId = modules.length + 1;
+      const mod: Module = {
+        moduleId: newId,
+        moduleRefId: refId,
+        courseRefId: body.courseRefId ?? '',
+        courseName: course ? course.courseName : undefined,
+        moduleCode: `MOD-${100 + newId}`,
+        moduleName: body.moduleName ?? '',
+        name: body.moduleName ?? '',
+        description: body.description ?? null,
+        displayOrder: Number(body.displayOrder ?? 1),
+        status: body.status ?? 'draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: null,
+        deletedAt: null,
+        id: refId,
+      };
+      modules.unshift(mod);
+      return mod;
+    },
+    async remove(refOrId: string) {
+      await delay();
+      const i = modules.findIndex((x) => x.moduleRefId === refOrId || x.id === refOrId);
+      if (i >= 0) modules.splice(i, 1);
+    },
+  },
+
+  lessons: {
+    async list(params: { search?: string; status?: string; moduleRefId?: string; page?: number; pageSize?: number } = {}) {
+      await delay();
+      let list = lessons;
+      if (params.moduleRefId && params.moduleRefId !== 'all') {
+        list = list.filter((l) => l.moduleRefId === params.moduleRefId);
+      }
+      if (params.status && params.status !== 'all') {
+        list = list.filter((l) => String(l.status).toLowerCase() === params.status?.toLowerCase());
+      }
+      return paginate(list, params.search, params.page, params.pageSize);
+    },
+    async get(refOrId: string) {
+      await delay();
+      const l = lessons.find((x) => x.lessonRefId === refOrId || x.id === refOrId);
+      if (!l) throw Object.assign(new Error('Lesson not found'), { status: 404 });
+      return l;
+    },
+    async create(body: any) {
+      await delay();
+      const refId = body.lessonRefId && String(body.lessonRefId).trim() ? body.lessonRefId : `uuid-${Date.now()}`;
+      const mod = modules.find((m) => m.moduleRefId === body.moduleRefId || m.id === body.moduleRefId);
+      const vid = videos.find((v) => v.videoRefId === body.videoRefId || v.id === body.videoRefId);
+      const existingIdx = lessons.findIndex((x) => x.lessonRefId === body.lessonRefId || x.id === body.lessonRefId);
+      if (existingIdx >= 0) {
+        lessons[existingIdx] = {
+          ...lessons[existingIdx],
+          moduleRefId: body.moduleRefId ?? lessons[existingIdx].moduleRefId,
+          moduleName: mod ? mod.moduleName : lessons[existingIdx].moduleName,
+          lessonName: body.lessonName ?? lessons[existingIdx].lessonName,
+          name: body.lessonName ?? lessons[existingIdx].lessonName,
+          description: body.description !== undefined ? body.description : lessons[existingIdx].description,
+          videoRefId: body.videoRefId !== undefined ? (body.videoRefId ? String(body.videoRefId).trim() : null) : lessons[existingIdx].videoRefId,
+          videoTitle: vid ? vid.title : (body.videoRefId ? lessons[existingIdx].videoTitle : undefined),
+          notes: body.notes !== undefined ? body.notes : lessons[existingIdx].notes,
+          displayOrder: Number(body.displayOrder ?? lessons[existingIdx].displayOrder),
+          status: body.status ?? lessons[existingIdx].status,
+          updatedAt: new Date().toISOString(),
+        };
+        return lessons[existingIdx];
+      }
+      const newId = lessons.length + 1;
+      const lsn: Lesson = {
+        lessonId: newId,
+        lessonRefId: refId,
+        moduleRefId: body.moduleRefId ?? '',
+        moduleName: mod ? mod.moduleName : undefined,
+        lessonCode: `LSN-${100 + newId}`,
+        lessonName: body.lessonName ?? '',
+        name: body.lessonName ?? '',
+        description: body.description ?? null,
+        videoRefId: body.videoRefId && String(body.videoRefId).trim() ? String(body.videoRefId).trim() : null,
+        videoTitle: vid ? vid.title : undefined,
+        notes: body.notes ?? null,
+        displayOrder: Number(body.displayOrder ?? 1),
+        status: body.status ?? 'draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: null,
+        deletedAt: null,
+        id: refId,
+      };
+      lessons.unshift(lsn);
+      return lsn;
+    },
+    async remove(refOrId: string) {
+      await delay();
+      const i = lessons.findIndex((x) => x.lessonRefId === refOrId || x.id === refOrId);
+      if (i >= 0) lessons.splice(i, 1);
+    },
+  },
 };
+
 
 export const demoCredentials = [
   { email: 'admin@codeclass.dev', password: 'password', role: 'admin' },
