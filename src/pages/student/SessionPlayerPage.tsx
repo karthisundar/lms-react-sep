@@ -46,7 +46,11 @@ export default function SessionPlayerPage() {
         }
         setSession(s);
 
-        const videoList = vRes?.row || vRes?.items || [];
+        const rawList = vRes?.row || vRes?.items || [];
+        const videoList = rawList.map((v: any) => ({
+          ...v,
+          videoRefId: String(v.videoRefId || v.video_ref_id || v.id || v.videoId || v.video_id || '').trim(),
+        }));
         setVideos(videoList);
 
         // Default to first video if available

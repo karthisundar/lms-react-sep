@@ -13,6 +13,10 @@ export default function ProtectedRoute({ children, roles }: ProtectedRouteProps)
   const location = useLocation();
 
   if (!isAuthenticated) {
+    if (sessionStorage.getItem('just_logged_out') === 'true') {
+      sessionStorage.removeItem('just_logged_out');
+      return <Navigate to="/" replace />;
+    }
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

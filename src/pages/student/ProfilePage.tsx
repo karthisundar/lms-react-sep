@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Calendar, Mail, ShieldCheck, User as UserIcon, Clock } from 'lucide-react';
+import { Calendar, Mail, ShieldCheck, User as UserIcon, Clock, Phone, Hash } from 'lucide-react';
 import { api } from '@/services';
 import type { User } from '@/types/api';
 import { PageHeader, Spinner, ErrorBanner } from '@/components/ui';
@@ -25,6 +25,9 @@ export default function ProfilePage() {
   if (error) return <ErrorBanner message={error} />;
   if (!user) return <ErrorBanner message="Profile not found" />;
 
+  const displayPhone = user.phoneNumber || user.phone_number || '';
+  const displayUserRefId = user.user_ref_id || (user.id && user.id.includes('-') ? user.id : '');
+
   return (
     <div>
       <PageHeader title="My Profile" description="Your account details (read-only)." />
@@ -48,6 +51,12 @@ export default function ProfilePage() {
             label="Role"
             value={<span className="capitalize badge bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">{user.role}</span>}
           />
+          {displayPhone && (
+            <InfoRow icon={Phone} label="Phone number" value={displayPhone} />
+          )}
+          {displayUserRefId && (
+            <InfoRow icon={Hash} label="User Reference ID" value={<span className="font-mono text-xs">{displayUserRefId}</span>} />
+          )}
           {user.createdAt && (
             <InfoRow icon={Calendar} label="Member since" value={new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })} />
           )}

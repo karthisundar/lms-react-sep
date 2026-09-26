@@ -194,7 +194,9 @@ export interface Video {
 
   // Compatibility fields for existing modules
   id: string;
+  name?: string;
   signedUrl?: string;
+  duration?: number;
   durationSec?: number;
 }
 
@@ -291,6 +293,13 @@ export interface ListParams {
   sessionRefId?: string;
   courseRefId?: string;
   moduleRefId?: string;
+  lessonRefId?: string;
+  videoRefId?: string;
+  lessonVideoMappingRefId?: string;
+  lessonId?: number | string;
+  lessonNotesRefId?: string;
+  userId?: number | string;
+  userLessonRefId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -312,6 +321,7 @@ export interface VideoProgressCreateInput {
   videoRefId: string;
   lastWatchedDuration: number;
   videoDuration: number;
+  isCompleted?: boolean;
 }
 
 export interface VideoProgressApiResponse {
@@ -463,5 +473,145 @@ export interface LessonDeleteInput {
   lessonRefId: string;
 }
 
+// Lesson Video Mapping Types
+export type LessonVideoMappingStatus = 'active' | 'inactive' | 'draft' | 'published' | string;
+
+export interface LessonVideoMapping {
+  lessonVideoMappingId?: number;
+  lessonVideoMappingRefId: string;
+  lessonRefId: string;
+  videoRefId: string;
+  displayOrder: number;
+  status: LessonVideoMappingStatus;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  deletedBy?: number | null;
+  createdAt?: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+  // Compatibility helpers
+  id: string;
+  lessonName?: string;
+  videoTitle?: string;
+  lesson?: Partial<Lesson>;
+  video?: Partial<Video>;
+}
+
+export interface LessonVideoMappingCreateInput {
+  lessonVideoMappingRefId?: string;
+  lessonRefId: string;
+  videoRefId: string;
+  displayOrder: number;
+  status?: LessonVideoMappingStatus;
+}
+
+export interface LessonVideoMappingUpdateInput {
+  lessonVideoMappingRefId: string;
+  lessonRefId: string;
+  videoRefId: string;
+  displayOrder: number;
+  status?: LessonVideoMappingStatus;
+}
+
+export interface LessonVideoMappingDeleteInput {
+  lessonVideoMappingRefId: string;
+}
+
+// Lesson Notes Types
+export type LessonNotesStatus = number | string;
+
+export interface LessonNotes {
+  lessonNotesId?: number;
+  lessonNotesRefId: string;
+  lessonId: number | string;
+  title: string;
+  content: string;
+  status: LessonNotesStatus;
+  documentUrl?: string | null;
+  fileName?: string | null;
+  filename?: string | null;
+  fileType?: string | null;
+  fileSize?: number | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  deletedBy?: number | null;
+  createdAt?: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+  // UI helpers
+  id: string;
+  lessonName?: string;
+  lesson?: Partial<Lesson>;
+}
+
+export interface LessonNotesCreateInput {
+  lessonNotesRefId?: string;
+  lessonId: number | string;
+  title: string;
+  content: string;
+  status?: LessonNotesStatus;
+  file?: File | null;
+  documentUrl?: string | null;
+  fileName?: string | null;
+  filename?: string | null;
+}
+
+export interface LessonNotesUpdateInput {
+  lessonNotesRefId: string;
+  lessonId: number | string;
+  title: string;
+  content: string;
+  status?: LessonNotesStatus;
+  file?: File | null;
+  documentUrl?: string | null;
+  fileName?: string | null;
+  filename?: string | null;
+}
+
+export interface LessonNotesDeleteInput {
+  lessonNotesRefId: string;
+}
 
 
+// User Lesson Mapping Types
+export type UserLessonMappingStatus = number | string;
+
+export interface UserLessonMapping {
+  userLessonId?: number;
+  userLessonRefId: string;
+  userId: number | string;
+  lessonId: number | string;
+  status: UserLessonMappingStatus;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  deletedBy?: number | null;
+  createdAt?: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+
+  // Compatibility & UI fields
+  id: string;
+  user?: Pick<User, 'id' | 'name' | 'email' | 'user_id'>;
+  lesson?: Partial<Lesson>;
+  userName?: string;
+  userEmail?: string;
+  lessonName?: string;
+}
+
+export interface UserLessonMappingCreateInput {
+  userLessonRefId?: string;
+  userId: number | string;
+  lessonId: number | string;
+  status?: UserLessonMappingStatus;
+}
+
+export interface UserLessonMappingUpdateInput {
+  userLessonRefId: string;
+  userId: number | string;
+  lessonId: number | string;
+  status?: UserLessonMappingStatus;
+}
+
+export interface UserLessonMappingDeleteInput {
+  userLessonRefId: string;
+}

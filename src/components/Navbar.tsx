@@ -1,5 +1,5 @@
 import { Code as Code2, LogOut, User as UserIcon } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import ThemeToggle from './ThemeToggle';
 
@@ -8,8 +8,17 @@ interface NavbarProps {
 }
 
 export default function Navbar({ onLogout }: NavbarProps) {
-  const { user } = useAuth();
-
+  const { user,logout } = useAuth();
+  const navigate = useNavigate();
+  const handleLogout = () => {
+    sessionStorage.setItem('just_logged_out', 'true');
+    navigate('/', { replace: true });
+    if (onLogout) {
+      onLogout();
+    } else {
+      logout();
+    }
+  };
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white/80 px-4 backdrop-blur-md sm:px-6 dark:border-gray-800 dark:bg-gray-950/80">
       <Link to="/" className="flex items-center gap-2">
@@ -34,7 +43,7 @@ export default function Navbar({ onLogout }: NavbarProps) {
         </div>
         <button
           type="button"
-          onClick={onLogout}
+          onClick={handleLogout}
           className="btn-ghost h-9 px-2.5"
           aria-label="Log out"
           title="Log out"

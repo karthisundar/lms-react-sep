@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { Plus, Pencil, Trash2, GraduationCap, CheckCircle2, Eye, Layers, Film, FileText } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { lessonMasterService, moduleMasterService, videoMasterService } from '@/services';
@@ -32,6 +32,7 @@ const emptyForm: LessonFormData = {
 
 export default function AdminLessonsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   // Role-based protection: non-admin users must not access Lesson Master
   if (user && user.role !== 'admin') {
@@ -527,6 +528,19 @@ export default function AdminLessonsPage() {
                 id={`edit-lesson-${refId}`}
               >
                 <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() =>
+                  navigate(
+                    `/admin/lesson-notes?lessonId=${l.lessonId ?? ''}&lessonRefId=${l.lessonRefId ?? ''}`
+                  )
+                }
+                className="btn-ghost h-8 w-8 p-0 text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                title="Manage Lesson Notes"
+                aria-label="Manage Lesson Notes"
+                id={`notes-lesson-${refId}`}
+              >
+                <FileText className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setDeleteTarget(l)}

@@ -5,6 +5,10 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import AppLayout from '@/components/AppLayout';
 import LoginPage from '@/pages/LoginPage';
 
+import HomePage from '@/pages/public/HomePage';
+import AllCoursesPage from '@/pages/public/AllCoursesPage';
+import CourseDetailPage from '@/pages/public/CourseDetailPage';
+
 import ProfilePage from '@/pages/student/ProfilePage';
 import SessionPlayerPage from '@/pages/student/SessionPlayerPage';
 import SessionsRoutingPage from '@/pages/SessionsRoutingPage';
@@ -18,13 +22,9 @@ import AdminSessionsPage from '@/pages/admin/AdminSessionsPage';
 import AdminBucketsPage from '@/pages/admin/AdminBucketsPage';
 import AdminVideosPage from '@/pages/admin/AdminVideosPage';
 import AdminMappingsPage from '@/pages/admin/AdminMappingsPage';
-
-
-function RoleRedirect() {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.role === 'admin' ? '/admin' : '/sessions'} replace />;
-}
+import AdminLessonVideoMappingsPage from '@/pages/admin/AdminLessonVideoMappingsPage';
+import AdminLessonNotesPage from '@/pages/admin/AdminLessonNotesPage';
+import AdminUserLessonMappingsPage from '@/pages/admin/AdminUserLessonMappingsPage';
 
 export default function App() {
   return (
@@ -32,6 +32,10 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
+            {/* Public Educational & LMS Pages */}
+            <Route path="/" element={<HomePage />} />
+            <Route path="/courses" element={<AllCoursesPage />} />
+            <Route path="/courses/:courseSlug" element={<CourseDetailPage />} />
             <Route path="/login" element={<LoginPage />} />
 
             {/* Shared routes: accessible to both admin and user */}
@@ -59,11 +63,16 @@ export default function App() {
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/courses" element={<AdminCoursesPage />} />
-              <Route path="/courses" element={<Navigate to="/admin/courses" replace />} />
               <Route path="/admin/modules" element={<AdminModulesPage />} />
               <Route path="/modules" element={<Navigate to="/admin/modules" replace />} />
               <Route path="/admin/lessons" element={<AdminLessonsPage />} />
               <Route path="/lessons" element={<Navigate to="/admin/lessons" replace />} />
+              <Route path="/admin/lesson-video-mappings" element={<AdminLessonVideoMappingsPage />} />
+              <Route path="/lesson-video-mappings" element={<Navigate to="/admin/lesson-video-mappings" replace />} />
+              <Route path="/admin/lesson-notes" element={<AdminLessonNotesPage />} />
+              <Route path="/lesson-notes" element={<Navigate to="/admin/lesson-notes" replace />} />
+              <Route path="/admin/user-lesson-mappings" element={<AdminUserLessonMappingsPage />} />
+              <Route path="/user-lesson-mappings" element={<Navigate to="/admin/user-lesson-mappings" replace />} />
               <Route path="/admin/sessions" element={<AdminSessionsPage />} />
               <Route path="/sessions/create" element={<AdminSessionsPage initialMode="create" />} />
               <Route path="/sessions/edit/:id" element={<AdminSessionsPage initialMode="edit" />} />
@@ -77,8 +86,7 @@ export default function App() {
               <Route path="/user-session-mapping" element={<Navigate to="/mappings" replace />} />
             </Route>
 
-            <Route path="/" element={<RoleRedirect />} />
-            <Route path="*" element={<RoleRedirect />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

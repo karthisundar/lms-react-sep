@@ -21,6 +21,16 @@ import type {
   LessonDeleteInput,
   LessonStatus,
   LessonUpdateInput,
+  LessonVideoMapping,
+  LessonVideoMappingCreateInput,
+  LessonVideoMappingDeleteInput,
+  LessonVideoMappingStatus,
+  LessonVideoMappingUpdateInput,
+  LessonNotes,
+  LessonNotesCreateInput,
+  LessonNotesDeleteInput,
+  LessonNotesStatus,
+  LessonNotesUpdateInput,
   ListParams,
   Module,
   ModuleCreateInput,
@@ -41,6 +51,11 @@ import type {
   UserSessionMappingDeleteInput,
   UserSessionMappingInput,
   UserSessionMappingUpdateInput,
+  UserLessonMapping,
+  UserLessonMappingCreateInput,
+  UserLessonMappingDeleteInput,
+  UserLessonMappingStatus,
+  UserLessonMappingUpdateInput,
   UserUpdateInput,
   Video,
   VideoCreateInput,
@@ -136,36 +151,79 @@ export function decodeJwt<T = TokenClaims>(token: string): T | null {
 
 export function getUserFromToken(token: string): User {
   const decoded = decodeJwt<TokenClaims>(token) || {};
-  const data = decoded.user || decoded.data || decoded;
+  const data = (decoded.user || decoded.data || decoded) as Record<string, any>;
 
-  const id = data.id || data.userId || data._id || data.sub || 'u-default';
-  const email = data.email || '';
-  const name = data.name || data.username || (email ? email.split('@')[0] : 'User');
+  const id =
+    data.id ||
+    data.userId ||
+    data.user_id ||
+    data._id ||
+    data.sub ||
+    data.user_ref_id ||
+    data.userRefId ||
+    (decoded as any).user_ref_id ||
+    (decoded as any).userRefId ||
+    'u-default';
+  const email = data.email || (decoded as any).email || '';
+  const name =
+    data.name ||
+    data.username ||
+    data.userName ||
+    (decoded as any).name ||
+    (email ? email.split('@')[0] : 'User');
 
   let role: Role = 'user';
-  const rawRole = data.role ?? data.roles ?? data.roleName ?? (data.isAdmin ? 'admin' : undefined);
+  const rawRole =
+    data.role ??
+    data.roles ??
+    data.roleName ??
+    (decoded as any).role ??
+    (data.isAdmin ? 'admin' : undefined);
   if (typeof rawRole === 'string') {
     role = rawRole.toLowerCase().includes('admin') ? 'admin' : 'user';
   } else if (Array.isArray(rawRole)) {
     role = rawRole.some((r: string) => String(r).toLowerCase().includes('admin')) ? 'admin' : 'user';
   }
 
+  const rawUserRef =
+    data.user_ref_id ||
+    data.userRefId ||
+    (decoded as any).user_ref_id ||
+    (decoded as any).userRefId ||
+    (typeof id === 'string' && (id.includes('-') || isNaN(Number(id))) ? id : '');
+  const userRefId = rawUserRef ? String(rawUserRef).trim() : undefined;
+  const phoneNumber = String(
+    data.phoneNumber ||
+    data.phone_number ||
+    data.phone ||
+    (decoded as any).phoneNumber ||
+    (decoded as any).phone_number ||
+    ''
+  ).trim();
+
   return {
     id: String(id),
     name: String(name),
     email: String(email),
     role,
-    avatarUrl: data.avatarUrl || '',
+    avatarUrl: data.avatarUrl || (decoded as any).avatarUrl || '',
     is_active: data.is_active !== undefined ? Boolean(data.is_active) : true,
-    createdAt: data.createdAt,
+    createdAt: data.createdAt || (decoded as any).createdAt,
+    user_ref_id: userRefId,
+    phoneNumber,
+    phone_number: phoneNumber,
   };
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string> | undefined),
   };
+  if (isFormData && headers['Content-Type']) {
+    delete headers['Content-Type'];
+  }
   const token = localStorage.getItem('access_token') || getToken();
   if (headers['Authorization'] && !headers['Authorization'].startsWith('Bearer ')) {
     headers['Authorization'] = `${headers['Authorization']}`;
@@ -198,7 +256,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const text = await res.text();
+  if (!text || !text.trim()) {
+    return undefined as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as unknown as T;
+  }
 }
 
 function withQuery(params: ListParams = {}): string {
@@ -267,7 +333,101 @@ export const authApi = {
 
 // ---- Profile ----
 export const profileApi = {
-  get: () => request<User>('/profile'),
+  get: async (explicitUserRefId?: string): Promise<User> => {
+    const token = localStorage.getItem('access_token') || localStorage.getItem('cc_token') || getToken();
+    const tokenUser = token ? getUserFromToken(token) : null;
+    const targetUserRefId = explicitUserRefId || tokenUser?.user_ref_id;
+
+    // 1. If explicitUserRefId is specified, fetch that specific user's details
+    if (explicitUserRefId) {
+      try {
+        const res = await request<any>(`/user/getUser?userRefId=${encodeURIComponent(explicitUserRefId)}`);
+        const item = res?.response?.data?.[0] || res?.data || res;
+        if (item && (item.name || item.email)) {
+          return normalizeUser(item);
+        }
+      } catch {}
+      try {
+        const res = await request<any>(`/user/getUser?user_ref_id=${encodeURIComponent(explicitUserRefId)}`);
+        const item = res?.response?.data?.[0] || res?.data || res;
+        if (item && (item.name || item.email)) {
+          return normalizeUser(item);
+        }
+      } catch {}
+      try {
+        const res = await request<User>(`/user/${encodeURIComponent(explicitUserRefId)}`);
+        if (res && (res.name || res.email)) {
+          return normalizeUser(res);
+        }
+      } catch {}
+    }
+
+    // 2. Normal logged-in user profile flow:
+    // First try /user/me
+    try {
+      const res = await request<User>('/user/me');
+      if (res && (res.name || res.email)) {
+        return {
+          ...normalizeUser(res),
+          user_ref_id: res.user_ref_id || tokenUser?.user_ref_id,
+          phoneNumber: res.phoneNumber || res.phone_number || tokenUser?.phoneNumber || '',
+          phone_number: res.phoneNumber || res.phone_number || tokenUser?.phone_number || '',
+        };
+      }
+    } catch {}
+
+    // Next try /user/getUser with logged-in user's user_ref_id from JWT
+    if (targetUserRefId) {
+      try {
+        const res = await request<any>(`/user/getUser?userRefId=${encodeURIComponent(targetUserRefId)}`);
+        const item = res?.response?.data?.[0] || res?.data || res;
+        if (item && (item.name || item.email)) {
+          const norm = normalizeUser(item);
+          return {
+            ...norm,
+            user_ref_id: norm.user_ref_id || targetUserRefId,
+            phoneNumber: norm.phoneNumber || tokenUser?.phoneNumber || '',
+            phone_number: norm.phoneNumber || tokenUser?.phone_number || '',
+          };
+        }
+      } catch {}
+
+      try {
+        const res = await request<any>(`/user/getUser?user_ref_id=${encodeURIComponent(targetUserRefId)}`);
+        const item = res?.response?.data?.[0] || res?.data || res;
+        if (item && (item.name || item.email)) {
+          const norm = normalizeUser(item);
+          return {
+            ...norm,
+            user_ref_id: norm.user_ref_id || targetUserRefId,
+            phoneNumber: norm.phoneNumber || tokenUser?.phoneNumber || '',
+            phone_number: norm.phoneNumber || tokenUser?.phone_number || '',
+          };
+        }
+      } catch {}
+    }
+
+    // Next try /profile
+    try {
+      const res = await request<User>('/profile');
+      if (res && (res.name || res.email)) {
+        return {
+          ...normalizeUser(res),
+          user_ref_id: res.user_ref_id || targetUserRefId || tokenUser?.user_ref_id,
+          phoneNumber: res.phoneNumber || res.phone_number || tokenUser?.phoneNumber || '',
+          phone_number: res.phoneNumber || res.phone_number || tokenUser?.phone_number || '',
+        };
+      }
+    } catch {}
+
+    // Fallback: stored user (ONLY if matching the current logged-in JWT identity) or tokenUser
+    const stored = getStoredUser();
+    if (stored && tokenUser && (stored.user_ref_id === tokenUser.user_ref_id || stored.email === tokenUser.email)) {
+      return stored;
+    }
+    if (tokenUser) return tokenUser;
+    throw new Error('Failed to load profile');
+  },
 };
 
 
@@ -576,13 +736,13 @@ export const bucketMasterApi = {
 export const bucketsApi = bucketMasterApi;
 
 export function normalizeVideo(v: Record<string, any>): Video {
-  const videoId = Number(v.videoId ?? v.id ?? 0);
-  const videoRefId = String(v.videoRefId ?? v.id ?? '');
-  const title = String(v.title ?? '');
+  const videoId = Number(v.videoId ?? v.video_id ?? v.id ?? 0);
+  const videoRefId = String(v.videoRefId ?? v.video_ref_id ?? (videoId ? String(videoId) : '') ?? v.id ?? '');
+  const title = String(v.title ?? v.name ?? '');
   const filename = String(v.filename ?? '');
-  const url = String(v.url ?? '');
-  const sessionId = String(v.sessionId ?? '');
-  const bucketId = String(v.bucketId ?? '');
+  const url = String(v.url ?? v.signedUrl ?? v.signed_url ?? '');
+  const sessionId = String(v.sessionId ?? v.session_id ?? v.sessionRefId ?? v.session_ref_id ?? '');
+  const bucketId = String(v.bucketId ?? v.bucket_id ?? '');
 
   return {
     videoId,
@@ -600,8 +760,10 @@ export function normalizeVideo(v: Record<string, any>): Video {
     deletedBy: typeof v.deletedBy === 'number' ? v.deletedBy : null,
     // Compatibility helpers
     id: videoRefId || String(videoId),
-    signedUrl: typeof v.signedUrl === 'string' ? v.signedUrl : undefined,
-    durationSec: typeof v.durationSec === 'number' ? v.durationSec : undefined,
+    name: title,
+    signedUrl: typeof v.signedUrl === 'string' ? v.signedUrl : (typeof v.signed_url === 'string' ? v.signed_url : undefined),
+    duration: typeof v.duration === 'number' ? v.duration : (typeof v.durationSec === 'number' ? v.durationSec : (typeof v.duration_sec === 'number' ? v.duration_sec : undefined)),
+    durationSec: typeof v.durationSec === 'number' ? v.durationSec : (typeof v.duration === 'number' ? v.duration : (typeof v.duration_sec === 'number' ? v.duration_sec : undefined)),
   };
 }
 
@@ -719,7 +881,7 @@ export const videoMasterApi = {
   },
 
   getVideoProgress: async (videoRefId: string): Promise<VideoProgress | null> => {
-    const rawToken = localStorage.getItem('access_token') || getToken();
+    const rawToken = localStorage.getItem('access_token') || localStorage.getItem('cc_token') || getToken();
     const headers: Record<string, string> = {};
     if (rawToken) {
       headers['Authorization'] = rawToken;
@@ -736,15 +898,34 @@ export const videoMasterApi = {
 
       const responseObj = (res || {}) as Record<string, any>;
       const innerResponse = responseObj.response;
-      const rawData = innerResponse?.data ?? responseObj.data ?? (responseObj.videoRefId ? responseObj : null);
+      const rawData =
+        innerResponse?.data ??
+        responseObj.data ??
+        responseObj.row ??
+        responseObj.rows ??
+        responseObj.items ??
+        responseObj.result ??
+        (responseObj.videoRefId || responseObj.lastWatchedDuration !== undefined || responseObj.last_watched_duration !== undefined
+          ? responseObj
+          : null);
       const item = Array.isArray(rawData) ? rawData[0] : rawData;
 
       if (item && typeof item === 'object') {
+        const rawLastWatched =
+          item.lastWatchedDuration ??
+          item.last_watched_duration ??
+          item.watchedDuration ??
+          item.watched_duration;
+        const rawVideoDur =
+          item.videoDuration ??
+          item.video_duration ??
+          item.totalDuration ??
+          item.duration;
         return {
-          videoRefId: String(item.videoRefId ?? videoRefId),
-          videoId: item.videoId !== undefined ? Number(item.videoId) : undefined,
-          lastWatchedDuration: Number(item.lastWatchedDuration ?? 0) || 0,
-          videoDuration: Number(item.videoDuration ?? 0) || 0,
+          videoRefId: String(item.videoRefId ?? item.video_ref_id ?? videoRefId),
+          videoId: item.videoId !== undefined ? Number(item.videoId) : (item.video_id !== undefined ? Number(item.video_id) : undefined),
+          lastWatchedDuration: Number(rawLastWatched ?? 0) || 0,
+          videoDuration: Number(rawVideoDur ?? 0) || 0,
           isCompleted: Boolean(item.isCompleted ?? item.is_completed ?? false),
         };
       }
@@ -756,23 +937,32 @@ export const videoMasterApi = {
   },
 
   createVideoProgress: async (body: VideoProgressCreateInput): Promise<void> => {
-    const rawToken = localStorage.getItem('access_token') || getToken();
+    const rawToken = localStorage.getItem('access_token') || localStorage.getItem('cc_token') || getToken();
     const headers: Record<string, string> = {};
     if (rawToken) {
       headers['Authorization'] = rawToken;
     }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       videoRefId: body.videoRefId,
       lastWatchedDuration: Number(body.lastWatchedDuration),
       videoDuration: Number(body.videoDuration),
     };
+    if (typeof body.isCompleted === 'boolean') {
+      payload.isCompleted = body.isCompleted;
+    }
 
-    await request<unknown>(`${VIDEO_MASTER_BASE_URL}/createVideoProgress`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
+    try {
+      const response = await request<unknown>(`${VIDEO_MASTER_BASE_URL}/createVideoProgress`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      return response as void;
+    } catch (error) {
+      console.error("[VIDEO PROGRESS] createVideoProgress HTTP error:", error);
+      throw error;
+    }
   },
 
   // Aliases conforming to standard CRUD naming
@@ -1027,7 +1217,7 @@ export const studentApi = {
 };
 
 export function normalizeUser(u: Record<string, any>): User {
-  const id = String(u.user_id ?? u.id ?? u.user_ref_id ?? '');
+  const id = String(u.user_id ?? u.id ?? u.user_ref_id ?? u.userRefId ?? '');
   const roleStr = String(u.role ?? (u.role_id === ADMIN_ROLE_ID ? 'admin' : 'user')).toLowerCase();
   const role: Role = roleStr.includes('admin') ? 'admin' : 'user';
   const isActive =
@@ -1037,18 +1227,19 @@ export function normalizeUser(u: Record<string, any>): User {
         ? Boolean(u.is_active)
         : true;
 
-  const phone = String(u.phoneNumber ?? u.phone_number ?? '');
+  const phone = String(u.phoneNumber ?? u.phone_number ?? u.phone ?? '');
+  const userRefId = u.user_ref_id || u.userRefId || (typeof id === 'string' && (id.includes('-') || isNaN(Number(id))) ? id : undefined);
 
   return {
     id,
-    name: u.name ?? '',
+    name: u.name ?? u.userName ?? u.username ?? '',
     email: u.email ?? '',
     role,
     avatarUrl: u.avatarUrl ?? '',
     is_active: isActive,
     status: u.status ?? (isActive ? 'active' : 'inactive'),
     user_id: u.user_id,
-    user_ref_id: u.user_ref_id,
+    user_ref_id: userRefId,
     role_id: u.role_id ?? (role === 'admin' ? ADMIN_ROLE_ID : USER_ROLE_ID),
     phoneNumber: phone,
     phone_number: phone,
@@ -1101,7 +1292,20 @@ export const usersApi = {
     };
   },
   list: (params: ListParams = {}) => usersApi.getAllUsers(params),
-  get: (id: string) => request<User>(`${USER_BASE_URL}/${id}`),
+  get: async (id: string): Promise<User> => {
+    try {
+      return await request<User>(`${USER_BASE_URL}/${id}`);
+    } catch (err: unknown) {
+      if (typeof err === 'object' && err !== null && 'status' in err && (err as { status: number }).status === 404) {
+        try {
+          const res = await request<any>(`${USER_BASE_URL}/getUser?userRefId=${encodeURIComponent(id)}`);
+          const item = res?.response?.data?.[0] || res?.data || res;
+          if (item) return normalizeUser(item);
+        } catch {}
+      }
+      throw err;
+    }
+  },
   create: async (body: UserCreateInput | UserUpdateInput): Promise<User> => {
     try {
       return await request<User>('/user/createUser', { method: 'POST', body: JSON.stringify(body) });
@@ -1623,5 +1827,660 @@ export const lessonMasterApi = {
 };
 
 export const lessonsApi = lessonMasterApi;
+
+// ---- Admin: Lesson Video Mapping ----
+export function normalizeLessonVideoMapping(m: Record<string, any>): LessonVideoMapping {
+  const lessonVideoMappingRefId = String(
+    m.lessonVideoMappingRefId ??
+    m.lesson_video_mapping_ref_id ??
+    m.mappingRefId ??
+    m.id ??
+    ''
+  ).trim();
+  const lessonVideoMappingId = Number(m.lessonVideoMappingId ?? m.lesson_video_mapping_id ?? 0) || undefined;
+  const lessonRefId = String(m.lessonRefId ?? m.lesson_ref_id ?? '').trim();
+  const videoRefId = String(m.videoRefId ?? m.video_ref_id ?? '').trim();
+  const displayOrder = Number(m.displayOrder ?? m.display_order ?? 1);
+  const status = (m.status as LessonVideoMappingStatus) || 'draft';
+
+  const lessonObj = (m.lesson as Record<string, any>) || {};
+  const videoObj = (m.video as Record<string, any>) || {};
+
+  const lessonName = String(m.lessonName ?? lessonObj.lessonName ?? lessonObj.name ?? '').trim();
+  const videoTitle = String(m.videoTitle ?? m.title ?? videoObj.videoTitle ?? videoObj.title ?? '').trim();
+
+  return {
+    lessonVideoMappingId,
+    lessonVideoMappingRefId,
+    lessonRefId,
+    videoRefId,
+    displayOrder,
+    status,
+    createdBy: typeof m.createdBy === 'number' ? m.createdBy : null,
+    updatedBy: typeof m.updatedBy === 'number' ? m.updatedBy : null,
+    deletedBy: typeof m.deletedBy === 'number' ? m.deletedBy : null,
+    createdAt: typeof m.createdAt === 'string' ? m.createdAt : undefined,
+    updatedAt: typeof m.updatedAt === 'string' ? m.updatedAt : null,
+    deletedAt: typeof m.deletedAt === 'string' ? m.deletedAt : null,
+    id: lessonVideoMappingRefId || String(lessonVideoMappingId || ''),
+    lessonName: lessonName || undefined,
+    videoTitle: videoTitle || undefined,
+    lesson: m.lesson as Partial<Lesson> | undefined,
+    video: m.video as Partial<Video> | undefined,
+  };
+}
+
+export const lessonVideoMappingApi = {
+  getAllLessonVideoMappings: async (params: ListParams = {}): Promise<PaginatedResponse<LessonVideoMapping>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    if (params.status && params.status !== 'all') sp.set('status', params.status);
+    if (params.lessonRefId && params.lessonRefId !== 'all') sp.set('lessonRefId', params.lessonRefId);
+    if (params.videoRefId && params.videoRefId !== 'all') sp.set('videoRefId', params.videoRefId);
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<LessonVideoMapping>>(`${LESSON_BASE_URL}/getAllLessonVideoMappings${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeLessonVideoMapping);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getLessonVideoMapping: async (lessonVideoMappingRefId: string): Promise<LessonVideoMapping> => {
+    const res = await request<ApiResponse<LessonVideoMapping> | Record<string, unknown>>(
+      `${LESSON_BASE_URL}/getLessonVideoMapping?lessonVideoMappingRefId=${encodeURIComponent(lessonVideoMappingRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeLessonVideoMapping(raw);
+  },
+
+  createLessonVideoMapping: async (
+    body: LessonVideoMappingCreateInput | LessonVideoMappingUpdateInput
+  ): Promise<LessonVideoMapping> => {
+    const isEdit = Boolean(body.lessonVideoMappingRefId && String(body.lessonVideoMappingRefId).trim());
+    const payload: Record<string, unknown> = {
+      lessonRefId: (body.lessonRefId ?? '').trim(),
+      videoRefId: (body.videoRefId ?? '').trim(),
+      displayOrder: Number(body.displayOrder ?? 1),
+      status: body.status ?? 'draft',
+    };
+    if (isEdit) {
+      payload.lessonVideoMappingRefId = body.lessonVideoMappingRefId;
+    }
+
+    const res = await request<ApiResponse<LessonVideoMapping> | Record<string, unknown>>(
+      `${LESSON_BASE_URL}/createLessonVideoMapping`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = payload;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeLessonVideoMapping(raw);
+  },
+
+  deleteLessonVideoMapping: async (payload: LessonVideoMappingDeleteInput | string): Promise<void> => {
+    const lessonVideoMappingRefId =
+      typeof payload === 'string' ? payload : payload.lessonVideoMappingRefId;
+    return request<void>(`${LESSON_BASE_URL}/deleteLessonVideoMapping`, {
+      method: 'POST',
+      body: JSON.stringify({ lessonVideoMappingRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => lessonVideoMappingApi.getAllLessonVideoMappings(params),
+  get: (lessonVideoMappingRefId: string) => lessonVideoMappingApi.getLessonVideoMapping(lessonVideoMappingRefId),
+  create: (body: LessonVideoMappingCreateInput | LessonVideoMappingUpdateInput) =>
+    lessonVideoMappingApi.createLessonVideoMapping(body),
+  update: (
+    idOrBody: string | LessonVideoMappingUpdateInput,
+    body?: LessonVideoMappingUpdateInput
+  ) => {
+    if (typeof idOrBody === 'string') {
+      return lessonVideoMappingApi.createLessonVideoMapping({
+        ...(body || {}),
+        lessonVideoMappingRefId: idOrBody,
+        lessonRefId: body?.lessonRefId || '',
+        videoRefId: body?.videoRefId || '',
+        displayOrder: body?.displayOrder ?? 1,
+      });
+    }
+    return lessonVideoMappingApi.createLessonVideoMapping(idOrBody);
+  },
+  remove: (payload: LessonVideoMappingDeleteInput | string) =>
+    lessonVideoMappingApi.deleteLessonVideoMapping(payload),
+};
+
+export const lessonVideoMappingsApi = lessonVideoMappingApi;
+
+// ---- Admin: Lesson Notes ----
+export function normalizeLessonNotes(raw: Record<string, any>): LessonNotes {
+  const lessonNotesRefId = String(
+    raw.lessonNotesRefId ??
+    raw.lesson_notes_ref_id ??
+    raw.notesRefId ??
+    raw.refId ??
+    raw.id ??
+    ''
+  ).trim();
+  const lessonNotesId = Number(raw.lessonNotesId ?? raw.lesson_notes_id ?? 0) || undefined;
+  const lessonId = raw.lessonId ?? raw.lesson_id ?? '';
+  const title = String(raw.title ?? raw.noteTitle ?? '').trim();
+  const content = String(raw.content ?? raw.notes ?? raw.description ?? '').trim();
+  const status = raw.status !== undefined && raw.status !== null ? raw.status : 1;
+
+  const lessonObj = (raw.lesson as Record<string, any>) || {};
+  const lessonName = String(raw.lessonName ?? lessonObj.lessonName ?? lessonObj.name ?? '').trim();
+
+  const documentUrl = String(
+    raw.documentUrl ??
+    raw.document_url ??
+    raw.fileUrl ??
+    raw.file_url ??
+    raw.attachmentUrl ??
+    raw.attachment_url ??
+    raw.url ??
+    ''
+  ).trim() || null;
+
+  let fileName = String(
+    raw.fileName ??
+    raw.filename ??
+    raw.documentName ??
+    raw.document_name ??
+    raw.attachmentName ??
+    raw.name ??
+    ''
+  ).trim() || null;
+
+  if (!fileName && documentUrl) {
+    try {
+      const parsed = new URL(documentUrl, 'http://localhost');
+      fileName = decodeURIComponent(parsed.pathname.split('/').pop() || '') || null;
+    } catch {
+      const parts = documentUrl.split('/');
+      fileName = decodeURIComponent(parts[parts.length - 1]?.split('?')[0] || '') || null;
+    }
+  }
+
+  const fileType = String(
+    raw.fileType ??
+    raw.file_type ??
+    raw.documentType ??
+    raw.document_type ??
+    raw.mimeType ??
+    ''
+  ).trim() || null;
+
+  const fileSize = typeof raw.fileSize === 'number'
+    ? raw.fileSize
+    : (typeof raw.file_size === 'number' ? raw.file_size : null);
+
+  return {
+    lessonNotesId,
+    lessonNotesRefId,
+    lessonId,
+    title,
+    content,
+    status,
+    documentUrl,
+    fileName,
+    filename: fileName,
+    fileType,
+    fileSize,
+    createdBy: typeof raw.createdBy === 'number' ? raw.createdBy : null,
+    updatedBy: typeof raw.updatedBy === 'number' ? raw.updatedBy : null,
+    deletedBy: typeof raw.deletedBy === 'number' ? raw.deletedBy : null,
+    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : undefined,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null,
+    deletedAt: typeof raw.deletedAt === 'string' ? raw.deletedAt : null,
+    id: lessonNotesRefId || String(lessonNotesId || ''),
+    lessonName: lessonName || undefined,
+    lesson: raw.lesson as Partial<Lesson> | undefined,
+  };
+}
+
+export const lessonNotesApi = {
+  getAllLessonNotes: async (params: ListParams = {}): Promise<PaginatedResponse<LessonNotes>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    if (params.status !== undefined && params.status !== null && params.status !== 'all') {
+      sp.set('status', String(params.status));
+    }
+    if (params.lessonId !== undefined && params.lessonId !== null && params.lessonId !== 'all') {
+      sp.set('lessonId', String(params.lessonId));
+    }
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<LessonNotes>>(`${LESSON_BASE_URL}/getAllLessonNotes${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeLessonNotes);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getLessonNotes: async (lessonNotesRefId: string): Promise<LessonNotes> => {
+    const res = await request<ApiResponse<LessonNotes> | Record<string, unknown>>(
+      `${LESSON_BASE_URL}/getLessonNotes?lessonNotesRefId=${encodeURIComponent(lessonNotesRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeLessonNotes(raw);
+  },
+
+  createLessonNotes: async (
+    body: FormData | LessonNotesCreateInput | LessonNotesUpdateInput
+  ): Promise<LessonNotes> => {
+    let requestBody: BodyInit;
+    let fallbackRaw: Record<string, unknown> = {};
+
+    if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      requestBody = body;
+      const title = body.get('title');
+      const content = body.get('content');
+      const lessonId = body.get('lessonId');
+      const status = body.get('status');
+      const lessonNotesRefId = body.get('lessonNotesRefId');
+      fallbackRaw = {
+        title: title ? String(title) : '',
+        content: content ? String(content) : '',
+        lessonId: lessonId ? String(lessonId) : '',
+        status: status ? Number(status) : 1,
+        lessonNotesRefId: lessonNotesRefId ? String(lessonNotesRefId) : undefined,
+      };
+    } else {
+      const isEdit = Boolean(body.lessonNotesRefId && String(body.lessonNotesRefId).trim());
+      fallbackRaw = {
+        lessonId: body.lessonId,
+        title: (body.title ?? '').trim(),
+        content: (body.content ?? '').trim(),
+        status: body.status !== undefined && body.status !== null ? body.status : 1,
+      };
+      if (isEdit) {
+        fallbackRaw.lessonNotesRefId = body.lessonNotesRefId;
+      }
+
+      if (body.file) {
+        const fd = new FormData();
+        fd.append('title', (body.title ?? '').trim());
+        fd.append('content', (body.content ?? '').trim());
+        fd.append('lessonId', String(body.lessonId));
+        fd.append('status', String(body.status !== undefined && body.status !== null ? body.status : 1));
+        if (isEdit && body.lessonNotesRefId) {
+          fd.append('lessonNotesRefId', body.lessonNotesRefId);
+        }
+        fd.append('file', body.file);
+        requestBody = fd;
+      } else {
+        requestBody = JSON.stringify(fallbackRaw);
+      }
+    }
+
+    const res = await request<ApiResponse<LessonNotes> | Record<string, unknown>>(
+      `${LESSON_BASE_URL}/createLessonNotes`,
+      {
+        method: 'POST',
+        body: requestBody,
+      }
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = fallbackRaw;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeLessonNotes(raw);
+  },
+
+
+  deleteLessonNotes: async (payload: LessonNotesDeleteInput | string): Promise<void> => {
+    const lessonNotesRefId = typeof payload === 'string' ? payload : payload.lessonNotesRefId;
+    return request<void>(`${LESSON_BASE_URL}/deleteLessonNotes`, {
+      method: 'POST',
+      body: JSON.stringify({ lessonNotesRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => lessonNotesApi.getAllLessonNotes(params),
+  get: (lessonNotesRefId: string) => lessonNotesApi.getLessonNotes(lessonNotesRefId),
+  create: (body: LessonNotesCreateInput | LessonNotesUpdateInput) =>
+    lessonNotesApi.createLessonNotes(body),
+  update: (
+    idOrBody: string | LessonNotesUpdateInput,
+    body?: LessonNotesUpdateInput
+  ) => {
+    if (typeof idOrBody === 'string') {
+      return lessonNotesApi.createLessonNotes({
+        ...(body || {}),
+        lessonNotesRefId: idOrBody,
+        lessonId: body?.lessonId ?? '',
+        title: body?.title ?? '',
+        content: body?.content ?? '',
+        status: body?.status ?? 1,
+      });
+    }
+    return lessonNotesApi.createLessonNotes(idOrBody);
+  },
+  remove: (payload: LessonNotesDeleteInput | string) =>
+    lessonNotesApi.deleteLessonNotes(payload),
+};
+
+export const lessonNoteApi = lessonNotesApi;
+
+// ---- Admin: User Lesson Mapping ----
+export function normalizeUserLessonMapping(raw: Record<string, any>): UserLessonMapping {
+  const userLessonRefId = String(
+    raw.userLessonRefId ??
+    raw.user_lesson_ref_id ??
+    raw.mappingRefId ??
+    raw.refId ??
+    raw.id ??
+    ''
+  ).trim();
+  const userLessonId = Number(raw.userLessonId ?? raw.user_lesson_id ?? 0) || undefined;
+  const userId = raw.userId ?? raw.user_id ?? '';
+  const lessonId = raw.lessonId ?? raw.lesson_id ?? '';
+  const status = raw.status !== undefined && raw.status !== null ? raw.status : 1;
+
+  const userObj = (raw.user as Record<string, any>) || {};
+  const lessonObj = (raw.lesson as Record<string, any>) || {};
+
+  const userName = String(raw.userName ?? userObj.name ?? userObj.userName ?? '').trim();
+  const userEmail = String(raw.userEmail ?? userObj.email ?? '').trim();
+  const lessonName = String(raw.lessonName ?? lessonObj.lessonName ?? lessonObj.name ?? '').trim();
+
+  return {
+    userLessonId,
+    userLessonRefId,
+    userId,
+    lessonId,
+    status,
+    createdBy: typeof raw.createdBy === 'number' ? raw.createdBy : null,
+    updatedBy: typeof raw.updatedBy === 'number' ? raw.updatedBy : null,
+    deletedBy: typeof raw.deletedBy === 'number' ? raw.deletedBy : null,
+    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : undefined,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null,
+    deletedAt: typeof raw.deletedAt === 'string' ? raw.deletedAt : null,
+    id: userLessonRefId || String(userLessonId || ''),
+    user: raw.user as Pick<User, 'id' | 'name' | 'email' | 'user_id'> | undefined,
+    lesson: raw.lesson as Partial<Lesson> | undefined,
+    userName: userName || undefined,
+    userEmail: userEmail || undefined,
+    lessonName: lessonName || undefined,
+  };
+}
+
+export const userLessonMappingApi = {
+  getAllUserLessonMappings: async (params: ListParams = {}): Promise<PaginatedResponse<UserLessonMapping>> => {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('pageSize', String(pageSize));
+    if (params.search) sp.set('search', params.search);
+    if (params.status !== undefined && params.status !== null && params.status !== 'all') {
+      sp.set('status', String(params.status));
+    }
+    if (params.userId !== undefined && params.userId !== null && params.userId !== 'all') {
+      sp.set('userId', String(params.userId));
+    }
+    if (params.lessonId !== undefined && params.lessonId !== null && params.lessonId !== 'all') {
+      sp.set('lessonId', String(params.lessonId));
+    }
+    const query = `?${sp.toString()}`;
+
+    const res = await request<ApiResponse<UserLessonMapping>>(`${LESSON_BASE_URL}/getAllUserLessonMappings${query}`);
+    const paginationData = res?.response?.data?.[0];
+
+    if (!paginationData) {
+      return {
+        totalItem: 0,
+        totalPage: 1,
+        row: [],
+        currentPage: String(page),
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+      };
+    }
+
+    const rawRows = paginationData.row || [];
+    const normalizedRows = rawRows.map(normalizeUserLessonMapping);
+    const totalItem = Number(paginationData.totalItem) || normalizedRows.length;
+    const totalPage = Number(paginationData.totalPage) || Math.max(1, Math.ceil(totalItem / pageSize));
+    const currentPage = Number(paginationData.currentPage ?? page);
+
+    return {
+      totalItem,
+      totalPage,
+      row: normalizedRows,
+      currentPage: String(currentPage),
+      items: normalizedRows,
+      total: totalItem,
+      page: currentPage,
+      pageSize,
+    };
+  },
+
+  getUserLessonMapping: async (userLessonRefId: string): Promise<UserLessonMapping> => {
+    const res = await request<ApiResponse<UserLessonMapping> | Record<string, unknown>>(
+      `${LESSON_BASE_URL}/getUserLessonMapping?userLessonRefId=${encodeURIComponent(userLessonRefId)}`
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = responseObj;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (Array.isArray(dataObj.row)) {
+        raw = (dataObj.row[0] as Record<string, unknown>) ?? dataObj;
+      } else {
+        raw = dataObj;
+      }
+    }
+    return normalizeUserLessonMapping(raw);
+  },
+
+  createUserLessonMapping: async (
+    body: UserLessonMappingCreateInput | UserLessonMappingUpdateInput
+  ): Promise<UserLessonMapping> => {
+    const isEdit = Boolean(body.userLessonRefId && String(body.userLessonRefId).trim());
+    const payload: Record<string, unknown> = {
+      userId: Number(body.userId) || body.userId,
+      lessonId: body.lessonId,
+      status: body.status !== undefined && body.status !== null ? Number(body.status) : 1,
+    };
+    if (isEdit) {
+      payload.userLessonRefId = body.userLessonRefId;
+    }
+
+    const res = await request<ApiResponse<UserLessonMapping> | Record<string, unknown>>(
+      `${LESSON_BASE_URL}/createUserLessonMapping`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+    const responseObj = (res || {}) as Record<string, unknown>;
+    const innerResponse = responseObj.response as Record<string, unknown> | undefined;
+    const data = innerResponse?.data ?? responseObj.data ?? res;
+    let raw: Record<string, unknown> = payload;
+    if (Array.isArray(data)) {
+      const first = data[0] as Record<string, unknown> | undefined;
+      if (first && Array.isArray(first.row)) {
+        raw = (first.row[0] as Record<string, unknown>) ?? first;
+      } else if (first) {
+        raw = first;
+      }
+    } else if (data && typeof data === 'object') {
+      raw = data as Record<string, unknown>;
+    }
+    return normalizeUserLessonMapping(raw);
+  },
+
+  deleteUserLessonMapping: async (payload: UserLessonMappingDeleteInput | string): Promise<void> => {
+    const userLessonRefId = typeof payload === 'string' ? payload : payload.userLessonRefId;
+    return request<void>(`${LESSON_BASE_URL}/deleteUserLessonMapping`, {
+      method: 'POST',
+      body: JSON.stringify({ userLessonRefId }),
+    });
+  },
+
+  // Aliases conforming to standard CRUD naming
+  list: (params: ListParams = {}) => userLessonMappingApi.getAllUserLessonMappings(params),
+  get: (userLessonRefId: string) => userLessonMappingApi.getUserLessonMapping(userLessonRefId),
+  create: (body: UserLessonMappingCreateInput | UserLessonMappingUpdateInput) =>
+    userLessonMappingApi.createUserLessonMapping(body),
+  update: (
+    idOrBody: string | UserLessonMappingUpdateInput,
+    body?: UserLessonMappingUpdateInput
+  ) => {
+    if (typeof idOrBody === 'string') {
+      return userLessonMappingApi.createUserLessonMapping({
+        ...(body || {}),
+        userLessonRefId: idOrBody,
+        userId: body?.userId ?? '',
+        lessonId: body?.lessonId ?? '',
+        status: body?.status ?? 1,
+      });
+    }
+    return userLessonMappingApi.createUserLessonMapping(idOrBody);
+  },
+  remove: (payload: UserLessonMappingDeleteInput | string) =>
+    userLessonMappingApi.deleteUserLessonMapping(payload),
+};
+
+export const userLessonMappingsApi = userLessonMappingApi;
+
+
+
 
 

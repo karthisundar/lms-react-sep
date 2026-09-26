@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Code as Code2, Eye, EyeOff, LogIn, ShieldCheck, GraduationCap } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Code as Code2, Eye, EyeOff, LogIn, ShieldCheck, GraduationCap } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import ThemeToggle from '@/components/ThemeToggle';
 import { api } from '@/services';
@@ -108,16 +108,36 @@ export default function LoginPage() {
         <div className="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-emerald-200/30 blur-3xl dark:bg-emerald-900/10" />
       </div>
 
+      {/* Top navigation with Home link */}
+      <div className="absolute left-4 top-4 z-10">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+          title="Back to Home"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Home</span>
+        </Link>
+      </div>
+
       <div className="absolute right-4 top-4">
         <ThemeToggle />
       </div>
 
       <div className="relative w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/30">
-            <Code2 className="h-7 w-7" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">CodeClass</h1>
+          <Link
+            to="/"
+            className="group inline-flex flex-col items-center cursor-pointer focus:outline-none"
+            title="Go to Home"
+          >
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/30 transition-transform group-hover:scale-105">
+              <Code2 className="h-7 w-7" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 transition-colors group-hover:text-brand-600 dark:text-white dark:group-hover:text-brand-400">
+              CodeClass
+            </h1>
+          </Link>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Online coding classes, on demand.</p>
         </div>
 
@@ -180,6 +200,17 @@ export default function LoginPage() {
               Sign in
             </button>
           </form>
+
+          {/* Form-level Home link */}
+          <div className="mt-4 text-center">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition-colors hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>← Home</span>
+            </Link>
+          </div>
 
           {api.isDemoMode && (
             <div className="mt-6 border-t border-gray-200 pt-4 dark:border-gray-800">

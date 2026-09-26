@@ -17,17 +17,13 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => api.getToken());
   const [user, setUser] = useState<User | null>(() => {
-    const stored = api.getStoredUser();
-    if (stored) return stored;
     const existingToken = api.getToken();
-    if (existingToken) {
-      try {
-        return getUserFromToken(existingToken);
-      } catch {
-        return null;
-      }
+    const tokenUser = existingToken ? getUserFromToken(existingToken) : null;
+    const stored = api.getStoredUser();
+    if (stored && tokenUser && (stored.user_ref_id === tokenUser.user_ref_id || stored.email === tokenUser.email)) {
+      return stored;
     }
-    return null;
+    return tokenUser;
   });
   const [loading, setLoading] = useState(false);
 

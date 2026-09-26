@@ -11,7 +11,8 @@ export interface Column<T> {
 
 interface DataTableProps<T> {
   columns: Column<T>[];
-  rows: T[];
+  rows?: T[];
+  data?: T[];
   total: number;
   totalPages?: number;
   page: number;
@@ -22,7 +23,7 @@ interface DataTableProps<T> {
   pageSizeOptions?: number[];
   onSearchChange?: (search: string) => void;
   searchValue?: string;
-  rowKey: (row: T) => string;
+  rowKey?: (row: T) => string;
   emptyMessage?: string;
   actions?: (row: T) => ReactNode;
 }
@@ -30,6 +31,7 @@ interface DataTableProps<T> {
 export default function DataTable<T>({
   columns,
   rows,
+  data,
   total,
   totalPages,
   page,
@@ -44,6 +46,16 @@ export default function DataTable<T>({
   emptyMessage = 'No records found.',
   actions,
 }: DataTableProps<T>) {
+  const tableRows = rows ?? data ?? [];
+  const getRowKey =
+    rowKey ??
+    ((row: T) =>
+      (row as any)?.id ??
+      (row as any)?.lessonVideoMappingRefId ??
+      (row as any)?.lessonRefId ??
+      (row as any)?.userSessionRefId ??
+      (row as any)?.key ??
+      String(Math.random()));
   const [localSearch, setLocalSearch] = useState(searchValue);
   const calcTotalPages = totalPages ?? Math.max(1, Math.ceil(total / pageSize));
 
@@ -120,7 +132,7 @@ export default function DataTable<T>({
                 </td>
               </tr>
             )}
-            {!loading && rows.length === 0 && (
+            {!loading && tableRows.length === 0 && (
               <tr>
                 <td colSpan={cols.length} className="px-4 py-10 text-center text-gray-400">
                   {emptyMessage}
@@ -128,9 +140,9 @@ export default function DataTable<T>({
               </tr>
             )}
             {!loading &&
-              rows.map((row) => (
+              tableRows.map((row) => (
                 <tr
-                  key={rowKey(row)}
+                  key={getRowKey(row)}
                   className="transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50"
                 >
                   {columns.map((col) => (

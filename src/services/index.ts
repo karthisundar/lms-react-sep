@@ -16,6 +16,14 @@ import type {
   LessonCreateInput,
   LessonDeleteInput,
   LessonUpdateInput,
+  LessonVideoMapping,
+  LessonVideoMappingCreateInput,
+  LessonVideoMappingDeleteInput,
+  LessonVideoMappingUpdateInput,
+  LessonNotes,
+  LessonNotesCreateInput,
+  LessonNotesDeleteInput,
+  LessonNotesUpdateInput,
   ListParams,
   Module,
   ModuleCreateInput,
@@ -34,6 +42,10 @@ import type {
   UserSessionMappingDeleteInput,
   UserSessionMappingInput,
   UserSessionMappingUpdateInput,
+  UserLessonMapping,
+  UserLessonMappingCreateInput,
+  UserLessonMappingDeleteInput,
+  UserLessonMappingUpdateInput,
   UserUpdateInput,
   Video,
   VideoCreateInput,
@@ -55,12 +67,18 @@ import {
   modulesApi,
   lessonMasterApi,
   lessonsApi,
+  lessonVideoMappingApi,
+  lessonVideoMappingsApi,
+  lessonNoteApi,
+  lessonNotesApi,
   profileApi,
   sessionMasterApi,
   sessionsApi,
   setSession,
   studentApi,
   userSessionMappingApi,
+  userLessonMappingApi,
+  userLessonMappingsApi,
   usersApi,
   videoMasterApi,
   videosApi,
@@ -88,7 +106,7 @@ export const api = {
   },
 
   profile: {
-    get: (): Promise<User> => (isDemoMode ? demoApi.profile() : profileApi.get()),
+    get: (explicitUserRefId?: string): Promise<User> => (isDemoMode ? demoApi.profile() : profileApi.get(explicitUserRefId)),
   },
 
   student: {
@@ -238,6 +256,175 @@ export const api = {
       isDemoMode ? demoApi.lessons.remove(id) : lessonMasterApi.deleteLesson({ lessonRefId: id }),
   },
 
+  lessonVideoMapping: {
+    getAllLessonVideoMappings: (params?: ListParams): Promise<PaginatedResponse<LessonVideoMapping>> =>
+      isDemoMode ? demoApi.lessonVideoMappings.list(params) : lessonVideoMappingApi.getAllLessonVideoMappings(params),
+    getLessonVideoMapping: (lessonVideoMappingRefId: string): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.get(lessonVideoMappingRefId) : lessonVideoMappingApi.getLessonVideoMapping(lessonVideoMappingRefId),
+    createLessonVideoMapping: (body: LessonVideoMappingCreateInput | LessonVideoMappingUpdateInput): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.create(body) : lessonVideoMappingApi.createLessonVideoMapping(body),
+    updateLessonVideoMapping: (body: LessonVideoMappingUpdateInput): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.create(body) : lessonVideoMappingApi.createLessonVideoMapping(body),
+    deleteLessonVideoMapping: (payload: LessonVideoMappingDeleteInput | string): Promise<void> =>
+      isDemoMode
+        ? demoApi.lessonVideoMappings.remove(typeof payload === 'string' ? payload : payload.lessonVideoMappingRefId)
+        : lessonVideoMappingApi.deleteLessonVideoMapping(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<LessonVideoMapping>> =>
+      isDemoMode ? demoApi.lessonVideoMappings.list(params) : lessonVideoMappingApi.getAllLessonVideoMappings(params),
+    get: (lessonVideoMappingRefId: string): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.get(lessonVideoMappingRefId) : lessonVideoMappingApi.getLessonVideoMapping(lessonVideoMappingRefId),
+    create: (body: LessonVideoMappingCreateInput | LessonVideoMappingUpdateInput): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.create(body) : lessonVideoMappingApi.createLessonVideoMapping(body),
+    update: (body: LessonVideoMappingUpdateInput): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.create(body) : lessonVideoMappingApi.createLessonVideoMapping(body),
+    remove: (payload: LessonVideoMappingDeleteInput | string): Promise<void> =>
+      isDemoMode
+        ? demoApi.lessonVideoMappings.remove(typeof payload === 'string' ? payload : payload.lessonVideoMappingRefId)
+        : lessonVideoMappingApi.deleteLessonVideoMapping(payload),
+  },
+
+  lessonVideoMappings: {
+    getAllLessonVideoMappings: (params?: ListParams): Promise<PaginatedResponse<LessonVideoMapping>> =>
+      isDemoMode ? demoApi.lessonVideoMappings.list(params) : lessonVideoMappingApi.getAllLessonVideoMappings(params),
+    getLessonVideoMapping: (lessonVideoMappingRefId: string): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.get(lessonVideoMappingRefId) : lessonVideoMappingApi.getLessonVideoMapping(lessonVideoMappingRefId),
+    createLessonVideoMapping: (body: LessonVideoMappingCreateInput | LessonVideoMappingUpdateInput): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.create(body) : lessonVideoMappingApi.createLessonVideoMapping(body),
+    updateLessonVideoMapping: (body: LessonVideoMappingUpdateInput): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.create(body) : lessonVideoMappingApi.createLessonVideoMapping(body),
+    deleteLessonVideoMapping: (payload: LessonVideoMappingDeleteInput | string): Promise<void> =>
+      isDemoMode
+        ? demoApi.lessonVideoMappings.remove(typeof payload === 'string' ? payload : payload.lessonVideoMappingRefId)
+        : lessonVideoMappingApi.deleteLessonVideoMapping(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<LessonVideoMapping>> =>
+      isDemoMode ? demoApi.lessonVideoMappings.list(params) : lessonVideoMappingApi.getAllLessonVideoMappings(params),
+    get: (id: string): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.get(id) : lessonVideoMappingApi.getLessonVideoMapping(id),
+    create: (body: LessonVideoMappingCreateInput | LessonVideoMappingUpdateInput): Promise<LessonVideoMapping> =>
+      isDemoMode ? demoApi.lessonVideoMappings.create(body) : lessonVideoMappingApi.createLessonVideoMapping(body),
+    update: (id: string, body: LessonVideoMappingUpdateInput): Promise<LessonVideoMapping> =>
+      isDemoMode
+        ? demoApi.lessonVideoMappings.create({ ...body, lessonVideoMappingRefId: id })
+        : lessonVideoMappingApi.createLessonVideoMapping({ ...body, lessonVideoMappingRefId: id }),
+    remove: (id: string): Promise<void> =>
+      isDemoMode
+        ? demoApi.lessonVideoMappings.remove(id)
+        : lessonVideoMappingApi.deleteLessonVideoMapping({ lessonVideoMappingRefId: id }),
+  },
+
+  lessonNotes: {
+    getAllLessonNotes: (params?: ListParams): Promise<PaginatedResponse<LessonNotes>> =>
+      isDemoMode ? demoApi.lessonNotes.list(params) : lessonNotesApi.getAllLessonNotes(params),
+    getLessonNotes: (lessonNotesRefId: string): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.get(lessonNotesRefId) : lessonNotesApi.getLessonNotes(lessonNotesRefId),
+    createLessonNotes: (body: LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    updateLessonNotes: (body: LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    deleteLessonNotes: (payload: LessonNotesDeleteInput | string): Promise<void> =>
+      isDemoMode
+        ? demoApi.lessonNotes.remove(typeof payload === 'string' ? payload : payload.lessonNotesRefId)
+        : lessonNotesApi.deleteLessonNotes(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<LessonNotes>> =>
+      isDemoMode ? demoApi.lessonNotes.list(params) : lessonNotesApi.getAllLessonNotes(params),
+    get: (lessonNotesRefId: string): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.get(lessonNotesRefId) : lessonNotesApi.getLessonNotes(lessonNotesRefId),
+    create: (body: LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    update: (body: LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    remove: (payload: LessonNotesDeleteInput | string): Promise<void> =>
+      isDemoMode
+        ? demoApi.lessonNotes.remove(typeof payload === 'string' ? payload : payload.lessonNotesRefId)
+        : lessonNotesApi.deleteLessonNotes(payload),
+  },
+
+  lessonNote: {
+    getAllLessonNotes: (params?: ListParams): Promise<PaginatedResponse<LessonNotes>> =>
+      isDemoMode ? demoApi.lessonNotes.list(params) : lessonNotesApi.getAllLessonNotes(params),
+    getLessonNotes: (lessonNotesRefId: string): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.get(lessonNotesRefId) : lessonNotesApi.getLessonNotes(lessonNotesRefId),
+    createLessonNotes: (body: LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    updateLessonNotes: (body: LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    deleteLessonNotes: (payload: LessonNotesDeleteInput | string): Promise<void> =>
+      isDemoMode
+        ? demoApi.lessonNotes.remove(typeof payload === 'string' ? payload : payload.lessonNotesRefId)
+        : lessonNotesApi.deleteLessonNotes(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<LessonNotes>> =>
+      isDemoMode ? demoApi.lessonNotes.list(params) : lessonNotesApi.getAllLessonNotes(params),
+    get: (id: string): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.get(id) : lessonNotesApi.getLessonNotes(id),
+    create: (body: LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    update: (id: string, body: LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode
+        ? demoApi.lessonNotes.create({ ...body, lessonNotesRefId: id })
+        : lessonNotesApi.createLessonNotes({ ...body, lessonNotesRefId: id }),
+    remove: (id: string): Promise<void> =>
+      isDemoMode
+        ? demoApi.lessonNotes.remove(id)
+        : lessonNotesApi.deleteLessonNotes({ lessonNotesRefId: id }),
+  },
+
+  userLessonMapping: {
+    getAllUserLessonMappings: (params?: ListParams): Promise<PaginatedResponse<UserLessonMapping>> =>
+      isDemoMode ? demoApi.userLessonMappings.list(params) : userLessonMappingApi.getAllUserLessonMappings(params),
+    getUserLessonMapping: (userLessonRefId: string): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.get(userLessonRefId) : userLessonMappingApi.getUserLessonMapping(userLessonRefId),
+    createUserLessonMapping: (body: UserLessonMappingCreateInput | UserLessonMappingUpdateInput): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.create(body) : userLessonMappingApi.createUserLessonMapping(body),
+    updateUserLessonMapping: (body: UserLessonMappingUpdateInput): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.create(body) : userLessonMappingApi.createUserLessonMapping(body),
+    deleteUserLessonMapping: (payload: UserLessonMappingDeleteInput | string): Promise<void> =>
+      isDemoMode
+        ? demoApi.userLessonMappings.remove(typeof payload === 'string' ? payload : payload.userLessonRefId)
+        : userLessonMappingApi.deleteUserLessonMapping(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<UserLessonMapping>> =>
+      isDemoMode ? demoApi.userLessonMappings.list(params) : userLessonMappingApi.getAllUserLessonMappings(params),
+    get: (userLessonRefId: string): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.get(userLessonRefId) : userLessonMappingApi.getUserLessonMapping(userLessonRefId),
+    create: (body: UserLessonMappingCreateInput | UserLessonMappingUpdateInput): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.create(body) : userLessonMappingApi.createUserLessonMapping(body),
+    update: (body: UserLessonMappingUpdateInput): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.create(body) : userLessonMappingApi.createUserLessonMapping(body),
+    remove: (payload: UserLessonMappingDeleteInput | string): Promise<void> =>
+      isDemoMode
+        ? demoApi.userLessonMappings.remove(typeof payload === 'string' ? payload : payload.userLessonRefId)
+        : userLessonMappingApi.deleteUserLessonMapping(payload),
+  },
+
+  userLessonMappings: {
+    getAllUserLessonMappings: (params?: ListParams): Promise<PaginatedResponse<UserLessonMapping>> =>
+      isDemoMode ? demoApi.userLessonMappings.list(params) : userLessonMappingApi.getAllUserLessonMappings(params),
+    getUserLessonMapping: (userLessonRefId: string): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.get(userLessonRefId) : userLessonMappingApi.getUserLessonMapping(userLessonRefId),
+    createUserLessonMapping: (body: UserLessonMappingCreateInput | UserLessonMappingUpdateInput): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.create(body) : userLessonMappingApi.createUserLessonMapping(body),
+    updateUserLessonMapping: (body: UserLessonMappingUpdateInput): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.create(body) : userLessonMappingApi.createUserLessonMapping(body),
+    deleteUserLessonMapping: (payload: UserLessonMappingDeleteInput | string): Promise<void> =>
+      isDemoMode
+        ? demoApi.userLessonMappings.remove(typeof payload === 'string' ? payload : payload.userLessonRefId)
+        : userLessonMappingApi.deleteUserLessonMapping(payload),
+    list: (params?: ListParams): Promise<PaginatedResponse<UserLessonMapping>> =>
+      isDemoMode ? demoApi.userLessonMappings.list(params) : userLessonMappingApi.getAllUserLessonMappings(params),
+    get: (id: string): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.get(id) : userLessonMappingApi.getUserLessonMapping(id),
+    create: (body: UserLessonMappingCreateInput | UserLessonMappingUpdateInput): Promise<UserLessonMapping> =>
+      isDemoMode ? demoApi.userLessonMappings.create(body) : userLessonMappingApi.createUserLessonMapping(body),
+    update: (id: string, body: UserLessonMappingUpdateInput): Promise<UserLessonMapping> =>
+      isDemoMode
+        ? demoApi.userLessonMappings.create({ ...body, userLessonRefId: id })
+        : userLessonMappingApi.createUserLessonMapping({ ...body, userLessonRefId: id }),
+    remove: (id: string): Promise<void> =>
+      isDemoMode
+        ? demoApi.userLessonMappings.remove(id)
+        : userLessonMappingApi.deleteUserLessonMapping({ userLessonRefId: id }),
+  },
+
+
 
 
   sessionMaster: {
@@ -333,8 +520,12 @@ export const api = {
       isDemoMode ? demoApi.videos.remove(typeof payload === 'string' ? payload : payload.videoRefId) : videoMasterApi.deleteVideo(payload),
     getVideoProgress: (videoRefId: string): Promise<VideoProgress | null> =>
       isDemoMode ? demoApi.videos.getVideoProgress(videoRefId) : videoMasterApi.getVideoProgress(videoRefId),
-    createVideoProgress: (payload: VideoProgressCreateInput): Promise<void> =>
-      isDemoMode ? demoApi.videos.createVideoProgress(payload) : videoMasterApi.createVideoProgress(payload),
+    createVideoProgress: (payload: VideoProgressCreateInput): Promise<void> => {
+      if (isDemoMode) {
+        void demoApi.videos.createVideoProgress(payload);
+      }
+      return videoMasterApi.createVideoProgress(payload);
+    },
   },
 
   videos: {
@@ -360,8 +551,12 @@ export const api = {
       isDemoMode ? demoApi.videos.remove(id) : videoMasterApi.deleteVideo({ videoRefId: id }),
     getVideoProgress: (videoRefId: string): Promise<VideoProgress | null> =>
       isDemoMode ? demoApi.videos.getVideoProgress(videoRefId) : videoMasterApi.getVideoProgress(videoRefId),
-    createVideoProgress: (payload: VideoProgressCreateInput): Promise<void> =>
-      isDemoMode ? demoApi.videos.createVideoProgress(payload) : videoMasterApi.createVideoProgress(payload),
+    createVideoProgress: (payload: VideoProgressCreateInput): Promise<void> => {
+      if (isDemoMode) {
+        void demoApi.videos.createVideoProgress(payload);
+      }
+      return videoMasterApi.createVideoProgress(payload);
+    },
   },
 
   userSessionMapping: {
@@ -445,6 +640,12 @@ export { userSessionMappingService, mappingService } from './userSessionMappingS
 export { courseService, courseMasterService } from './courseService';
 export { moduleService, moduleMasterService } from './moduleService';
 export { lessonService, lessonMasterService } from './lessonService';
+export { lessonVideoMappingService, mappingLessonVideoService } from './lessonVideoMappingService';
+export { lessonNotesService, lessonNoteService } from './lessonNotesService';
+export { userLessonMappingService, userLessonMappingsService } from './userLessonMappingService';
+
+
+
 
 
 

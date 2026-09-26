@@ -10,11 +10,14 @@ import type {
   BucketUpdateInput,
   Course,
   Lesson,
+  LessonNotes,
+  LessonVideoMapping,
   Module,
   PaginatedResponse,
   Session,
   User,
   UserCreateInput,
+  UserLessonMapping,
   UserSessionMapping,
   UserUpdateInput,
   Video,
@@ -453,6 +456,187 @@ const lessons: Lesson[] = [
   },
 ];
 
+const lessonVideoMappings: LessonVideoMapping[] = [
+  {
+    lessonVideoMappingId: 1,
+    lessonVideoMappingRefId: 'uuid-lvm-1',
+    lessonRefId: 'uuid-lesson-1',
+    videoRefId: 'uuid-video-1',
+    displayOrder: 1,
+    status: 'published',
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-04T10:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-lvm-1',
+    lessonName: 'Introduction to Node.js Architecture',
+    videoTitle: 'Intro to TypeScript — Full Recording',
+  },
+  {
+    lessonVideoMappingId: 2,
+    lessonVideoMappingRefId: 'uuid-lvm-2',
+    lessonRefId: 'uuid-lesson-2',
+    videoRefId: 'uuid-video-2',
+    displayOrder: 1,
+    status: 'published',
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-06T12:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-lvm-2',
+    lessonName: 'Asynchronous Programming with Async/Await',
+    videoTitle: 'React Hooks Deep Dive — Full Recording',
+  },
+  {
+    lessonVideoMappingId: 3,
+    lessonVideoMappingRefId: 'uuid-lvm-3',
+    lessonRefId: 'uuid-lesson-3',
+    videoRefId: 'uuid-video-3',
+    displayOrder: 1,
+    status: 'draft',
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-08T15:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-lvm-3',
+    lessonName: 'Express Middleware & Request Lifecycle',
+    videoTitle: 'Supabase RLS — Full Recording',
+  },
+];
+
+const lessonNotes: LessonNotes[] = [
+  {
+    lessonNotesId: 1,
+    lessonNotesRefId: 'uuid-note-1',
+    lessonId: 1,
+    title: 'Node Architecture Key Notes',
+    content: 'The V8 engine compiles JavaScript directly to native machine code. Libuv handles asynchronous I/O and provides the event loop with thread pool support for heavy OS operations.',
+    status: 1,
+    documentUrl: 'https://raw.githubusercontent.com/mozilla/pdf.js/master/examples/learning/helloworld.pdf',
+    fileName: 'node-architecture-overview.pdf',
+    filename: 'node-architecture-overview.pdf',
+    fileType: 'application/pdf',
+    fileSize: 1048576,
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-04T10:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-note-1',
+    lessonName: 'Introduction to Node.js Architecture',
+  },
+  {
+    lessonNotesId: 2,
+    lessonNotesRefId: 'uuid-note-2',
+    lessonId: 2,
+    title: 'Async/Await Best Practices',
+    content: 'Always wrap asynchronous calls in try/catch blocks or use a higher-order wrapper function to propagate errors to express error middleware cleanly.',
+    status: 1,
+    documentUrl: 'https://raw.githubusercontent.com/SheetJS/sheetjs/master/test_files/sheetjs.xlsx',
+    fileName: 'async-await-cheatsheet.xlsx',
+    filename: 'async-await-cheatsheet.xlsx',
+    fileType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    fileSize: 42560,
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-06T12:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-note-2',
+    lessonName: 'Asynchronous Programming with Async/Await',
+  },
+  {
+    lessonNotesId: 3,
+    lessonNotesRefId: 'uuid-note-3',
+    lessonId: 3,
+    title: 'Middleware Ordering Rules',
+    content: 'Middleware functions execute in the order they are mounted with app.use(). Error handlers must accept 4 arguments: (err, req, res, next).',
+    status: 1,
+    documentUrl: null,
+    fileName: null,
+    filename: null,
+    fileType: null,
+    fileSize: null,
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-08T15:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-note-3',
+    lessonName: 'Express Middleware & Request Lifecycle',
+  },
+];
+
+
+const userLessonMappings: UserLessonMapping[] = [
+  {
+    userLessonId: 1,
+    userLessonRefId: 'uuid-ulm-1',
+    userId: 2,
+    lessonId: 1,
+    status: 1,
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-05T10:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-ulm-1',
+    userName: student.name,
+    userEmail: student.email,
+    lessonName: 'Introduction to Node.js Architecture',
+    user: { id: student.id, name: student.name, email: student.email, user_id: student.user_id },
+  },
+  {
+    userLessonId: 2,
+    userLessonRefId: 'uuid-ulm-2',
+    userId: 2,
+    lessonId: 2,
+    status: 1,
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-07T11:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-ulm-2',
+    userName: student.name,
+    userEmail: student.email,
+    lessonName: 'Asynchronous Programming with Async/Await',
+    user: { id: student.id, name: student.name, email: student.email, user_id: student.user_id },
+  },
+  {
+    userLessonId: 3,
+    userLessonRefId: 'uuid-ulm-3',
+    userId: 3,
+    lessonId: 3,
+    status: 0,
+    createdBy: 1,
+    updatedBy: null,
+    deletedBy: null,
+    createdAt: '2026-08-09T14:00:00.000Z',
+    updatedAt: null,
+    deletedAt: null,
+    id: 'uuid-ulm-3',
+    userName: inactiveUser.name,
+    userEmail: inactiveUser.email,
+    lessonName: 'Express Middleware & Request Lifecycle',
+    user: { id: inactiveUser.id, name: inactiveUser.name, email: inactiveUser.email, user_id: inactiveUser.user_id },
+  },
+];
+
+
+
+
 
 
 function paginate<T>(items: T[], search: string | undefined, page = 1, pageSize = 10): PaginatedResponse<T> {
@@ -775,7 +959,9 @@ export const demoApi = {
         videoRefId: payload.videoRefId,
         lastWatchedDuration: payload.lastWatchedDuration,
         videoDuration: payload.videoDuration,
-        isCompleted: payload.lastWatchedDuration >= payload.videoDuration && payload.videoDuration > 0,
+        isCompleted: typeof payload.isCompleted === 'boolean'
+          ? payload.isCompleted
+          : payload.lastWatchedDuration >= payload.videoDuration && payload.videoDuration > 0,
       });
     },
   },
@@ -1186,6 +1372,262 @@ export const demoApi = {
       await delay();
       const i = lessons.findIndex((x) => x.lessonRefId === refOrId || x.id === refOrId);
       if (i >= 0) lessons.splice(i, 1);
+    },
+  },
+
+  lessonVideoMappings: {
+    async list(params: { search?: string; status?: string; lessonRefId?: string; videoRefId?: string; page?: number; pageSize?: number } = {}) {
+      await delay();
+      let list = lessonVideoMappings;
+      if (params.lessonRefId && params.lessonRefId !== 'all') {
+        list = list.filter((m) => m.lessonRefId === params.lessonRefId);
+      }
+      if (params.videoRefId && params.videoRefId !== 'all') {
+        list = list.filter((m) => m.videoRefId === params.videoRefId);
+      }
+      if (params.status && params.status !== 'all') {
+        list = list.filter((m) => String(m.status).toLowerCase() === params.status?.toLowerCase());
+      }
+      return paginate(list, params.search, params.page, params.pageSize);
+    },
+    async get(refOrId: string) {
+      await delay();
+      const item = lessonVideoMappings.find(
+        (x) => x.lessonVideoMappingRefId === refOrId || x.id === refOrId
+      );
+      if (!item) throw Object.assign(new Error('Lesson Video Mapping not found'), { status: 404 });
+      return item;
+    },
+    async create(body: any) {
+      await delay();
+      const refId =
+        body.lessonVideoMappingRefId && String(body.lessonVideoMappingRefId).trim()
+          ? body.lessonVideoMappingRefId
+          : `uuid-lvm-${Date.now()}`;
+      const lsn = lessons.find((l) => l.lessonRefId === body.lessonRefId || l.id === body.lessonRefId);
+      const vid = videos.find((v) => v.videoRefId === body.videoRefId || v.id === body.videoRefId);
+      const existingIdx = lessonVideoMappings.findIndex(
+        (x) => x.lessonVideoMappingRefId === body.lessonVideoMappingRefId || x.id === body.lessonVideoMappingRefId
+      );
+      if (existingIdx >= 0) {
+        lessonVideoMappings[existingIdx] = {
+          ...lessonVideoMappings[existingIdx],
+          lessonRefId: body.lessonRefId ?? lessonVideoMappings[existingIdx].lessonRefId,
+          lessonName: lsn ? lsn.lessonName : lessonVideoMappings[existingIdx].lessonName,
+          videoRefId: body.videoRefId ?? lessonVideoMappings[existingIdx].videoRefId,
+          videoTitle: vid ? vid.title : lessonVideoMappings[existingIdx].videoTitle,
+          displayOrder: Number(body.displayOrder ?? lessonVideoMappings[existingIdx].displayOrder),
+          status: body.status ?? lessonVideoMappings[existingIdx].status,
+          updatedAt: new Date().toISOString(),
+        };
+        return lessonVideoMappings[existingIdx];
+      }
+      const newId = lessonVideoMappings.length + 1;
+      const mapping: LessonVideoMapping = {
+        lessonVideoMappingId: newId,
+        lessonVideoMappingRefId: refId,
+        lessonRefId: body.lessonRefId ?? '',
+        lessonName: lsn ? lsn.lessonName : undefined,
+        videoRefId: body.videoRefId ?? '',
+        videoTitle: vid ? vid.title : undefined,
+        displayOrder: Number(body.displayOrder ?? 1),
+        status: body.status ?? 'draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: null,
+        deletedAt: null,
+        id: refId,
+      };
+      lessonVideoMappings.unshift(mapping);
+      return mapping;
+    },
+    async remove(refOrId: string) {
+      await delay();
+      const i = lessonVideoMappings.findIndex(
+        (x) => x.lessonVideoMappingRefId === refOrId || x.id === refOrId
+      );
+      if (i >= 0) lessonVideoMappings.splice(i, 1);
+    },
+  },
+
+  lessonNotes: {
+    async list(params: { search?: string; status?: any; lessonId?: any; page?: number; pageSize?: number } = {}) {
+      await delay();
+      let list = lessonNotes;
+      if (params.lessonId !== undefined && params.lessonId !== null && params.lessonId !== 'all') {
+        list = list.filter((n) => String(n.lessonId) === String(params.lessonId));
+      }
+      if (params.status !== undefined && params.status !== null && params.status !== 'all') {
+        list = list.filter((n) => String(n.status) === String(params.status));
+      }
+      return paginate(list, params.search, params.page, params.pageSize);
+    },
+    async get(refOrId: string) {
+      await delay();
+      const item = lessonNotes.find(
+        (x) => x.lessonNotesRefId === refOrId || x.id === refOrId
+      );
+      if (!item) throw Object.assign(new Error('Lesson Note not found'), { status: 404 });
+      return item;
+    },
+    async create(body: any) {
+      await delay();
+      const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+      const lessonNotesRefId = isFormData ? (body.get('lessonNotesRefId') as string) : body.lessonNotesRefId;
+      const lessonId = isFormData ? (body.get('lessonId') as string) : body.lessonId;
+      const title = isFormData ? (body.get('title') as string) : body.title;
+      const content = isFormData ? (body.get('content') as string) : body.content;
+      const status = isFormData ? Number(body.get('status') ?? 1) : (body.status ?? 1);
+      const file = isFormData ? (body.get('file') as File | null) : body.file;
+
+      const refId =
+        lessonNotesRefId && String(lessonNotesRefId).trim()
+          ? lessonNotesRefId
+          : `uuid-note-${Date.now()}`;
+      const lsn = lessons.find(
+        (l) => String(l.lessonId) === String(lessonId) || l.lessonRefId === String(lessonId) || l.id === String(lessonId)
+      );
+      const existingIdx = lessonNotes.findIndex(
+        (x) => x.lessonNotesRefId === lessonNotesRefId || x.id === lessonNotesRefId
+      );
+
+      let docUrl = body.documentUrl;
+      let docName = body.fileName || body.filename;
+      let docType = body.fileType;
+      let docSize = body.fileSize;
+
+      if (file && typeof file === 'object' && file.name) {
+        docName = file.name;
+        docType = file.type || 'application/octet-stream';
+        docSize = file.size;
+        docUrl = URL.createObjectURL(file);
+      }
+
+      if (existingIdx >= 0) {
+        lessonNotes[existingIdx] = {
+          ...lessonNotes[existingIdx],
+          lessonId: lessonId !== undefined ? lessonId : lessonNotes[existingIdx].lessonId,
+          lessonName: lsn ? lsn.lessonName : lessonNotes[existingIdx].lessonName,
+          title: title !== undefined ? String(title).trim() : lessonNotes[existingIdx].title,
+          content: content !== undefined ? String(content).trim() : lessonNotes[existingIdx].content,
+          status: status !== undefined ? status : lessonNotes[existingIdx].status,
+          documentUrl: docUrl !== undefined ? docUrl : lessonNotes[existingIdx].documentUrl,
+          fileName: docName !== undefined ? docName : lessonNotes[existingIdx].fileName,
+          filename: docName !== undefined ? docName : lessonNotes[existingIdx].filename,
+          fileType: docType !== undefined ? docType : lessonNotes[existingIdx].fileType,
+          fileSize: docSize !== undefined ? docSize : lessonNotes[existingIdx].fileSize,
+          updatedAt: new Date().toISOString(),
+        };
+        return lessonNotes[existingIdx];
+      }
+      const newId = lessonNotes.length + 1;
+      const note: LessonNotes = {
+        lessonNotesId: newId,
+        lessonNotesRefId: refId,
+        lessonId: lessonId,
+        lessonName: lsn ? lsn.lessonName : undefined,
+        title: String(title ?? '').trim(),
+        content: String(content ?? '').trim(),
+        status: status !== undefined ? status : 1,
+        documentUrl: docUrl || null,
+        fileName: docName || null,
+        filename: docName || null,
+        fileType: docType || null,
+        fileSize: docSize || null,
+        createdAt: new Date().toISOString(),
+        updatedAt: null,
+        deletedAt: null,
+        id: refId,
+      };
+      lessonNotes.unshift(note);
+      return note;
+    },
+
+    async remove(refOrId: string) {
+      await delay();
+      const i = lessonNotes.findIndex(
+        (x) => x.lessonNotesRefId === refOrId || x.id === refOrId
+      );
+      if (i >= 0) lessonNotes.splice(i, 1);
+    },
+  },
+
+  userLessonMappings: {
+    async list(params: { search?: string; status?: any; userId?: any; lessonId?: any; page?: number; pageSize?: number } = {}) {
+      await delay();
+      let list = userLessonMappings;
+      if (params.userId !== undefined && params.userId !== null && params.userId !== 'all') {
+        list = list.filter((m) => String(m.userId) === String(params.userId));
+      }
+      if (params.lessonId !== undefined && params.lessonId !== null && params.lessonId !== 'all') {
+        list = list.filter((m) => String(m.lessonId) === String(params.lessonId));
+      }
+      if (params.status !== undefined && params.status !== null && params.status !== 'all') {
+        list = list.filter((m) => String(m.status) === String(params.status));
+      }
+      return paginate(list, params.search, params.page, params.pageSize);
+    },
+    async get(refOrId: string) {
+      await delay();
+      const item = userLessonMappings.find(
+        (x) => x.userLessonRefId === refOrId || x.id === refOrId
+      );
+      if (!item) throw Object.assign(new Error('User Lesson Mapping not found'), { status: 404 });
+      return item;
+    },
+    async create(body: any) {
+      await delay();
+      const refId =
+        body.userLessonRefId && String(body.userLessonRefId).trim()
+          ? body.userLessonRefId
+          : `uuid-ulm-${Date.now()}`;
+      const usr = users.find(
+        (u) => String(u.user_id) === String(body.userId) || u.user_ref_id === String(body.userId) || u.id === String(body.userId)
+      );
+      const lsn = lessons.find(
+        (l) => String(l.lessonId) === String(body.lessonId) || l.lessonRefId === String(body.lessonId) || l.id === String(body.lessonId)
+      );
+      const existingIdx = userLessonMappings.findIndex(
+        (x) => x.userLessonRefId === body.userLessonRefId || x.id === body.userLessonRefId
+      );
+      if (existingIdx >= 0) {
+        userLessonMappings[existingIdx] = {
+          ...userLessonMappings[existingIdx],
+          userId: body.userId !== undefined ? (Number(body.userId) || body.userId) : userLessonMappings[existingIdx].userId,
+          lessonId: body.lessonId !== undefined ? body.lessonId : userLessonMappings[existingIdx].lessonId,
+          userName: usr ? usr.name : userLessonMappings[existingIdx].userName,
+          userEmail: usr ? usr.email : userLessonMappings[existingIdx].userEmail,
+          lessonName: lsn ? lsn.lessonName : userLessonMappings[existingIdx].lessonName,
+          user: usr ? { id: usr.id, name: usr.name, email: usr.email, user_id: usr.user_id } : userLessonMappings[existingIdx].user,
+          status: body.status !== undefined ? Number(body.status) : userLessonMappings[existingIdx].status,
+          updatedAt: new Date().toISOString(),
+        };
+        return userLessonMappings[existingIdx];
+      }
+      const newId = userLessonMappings.length + 1;
+      const mapping: UserLessonMapping = {
+        userLessonId: newId,
+        userLessonRefId: refId,
+        userId: Number(body.userId) || body.userId,
+        lessonId: body.lessonId,
+        userName: usr ? usr.name : undefined,
+        userEmail: usr ? usr.email : undefined,
+        lessonName: lsn ? lsn.lessonName : undefined,
+        user: usr ? { id: usr.id, name: usr.name, email: usr.email, user_id: usr.user_id } : undefined,
+        status: body.status !== undefined ? Number(body.status) : 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: null,
+        deletedAt: null,
+        id: refId,
+      };
+      userLessonMappings.unshift(mapping);
+      return mapping;
+    },
+    async remove(refOrId: string) {
+      await delay();
+      const i = userLessonMappings.findIndex(
+        (x) => x.userLessonRefId === refOrId || x.id === refOrId
+      );
+      if (i >= 0) userLessonMappings.splice(i, 1);
     },
   },
 };

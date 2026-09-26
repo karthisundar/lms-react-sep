@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import Navbar from '@/components/Navbar';
@@ -7,13 +7,20 @@ import Sidebar from '@/components/Sidebar';
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const handleLogout = () => {
+    sessionStorage.setItem('just_logged_out', 'true');
+    navigate('/', { replace: true });
+    logout();
+  };
 
   if (!user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <Navbar onLogout={logout} />
+      <Navbar onLogout={handleLogout} />
 
       {/* Mobile menu button */}
       <button
