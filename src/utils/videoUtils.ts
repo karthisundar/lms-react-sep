@@ -4,13 +4,13 @@
  */
 
 export type VideoSourceType =
-  | 'youtube'
-  | 'vimeo'
-  | 'google-drive'
-  | 'hls'
-  | 'dash'
-  | 'direct'
-  | 'unknown';
+  | "youtube"
+  | "vimeo"
+  | "google-drive"
+  | "hls"
+  | "dash"
+  | "direct"
+  | "unknown";
 
 export interface DetectedVideoSource {
   type: VideoSourceType;
@@ -21,68 +21,77 @@ export interface DetectedVideoSource {
 }
 
 // Backward compatibility alias
-export type VideoProvider = 'youtube' | 'html5' | 'vimeo' | 'google-drive' | 'unknown';
+export type VideoProvider =
+  | "youtube"
+  | "html5"
+  | "vimeo"
+  | "google-drive"
+  | "unknown";
 
 export const DIRECT_VIDEO_EXTENSIONS = [
-  '.mp4',
-  '.webm',
-  '.ogg',
-  '.ogv',
-  '.mov',
-  '.m4v',
-  '.mp4v',
-  '.mkv',
+  ".mp4",
+  ".webm",
+  ".ogg",
+  ".ogv",
+  ".mov",
+  ".m4v",
+  ".mp4v",
+  ".mkv",
 ];
 
 export const NON_VIDEO_EXTENSIONS = [
-  '.pdf',
-  '.doc',
-  '.docx',
-  '.xls',
-  '.xlsx',
-  '.ppt',
-  '.pptx',
-  '.zip',
-  '.rar',
-  '.tar',
-  '.gz',
-  '.7z',
-  '.exe',
-  '.apk',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.svg',
-  '.webp',
-  '.ico',
-  '.bmp',
-  '.tiff',
-  '.html',
-  '.htm',
-  '.css',
-  '.js',
-  '.jsx',
-  '.ts',
-  '.tsx',
-  '.json',
-  '.xml',
-  '.txt',
-  '.csv',
-  '.md',
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".ppt",
+  ".pptx",
+  ".zip",
+  ".rar",
+  ".tar",
+  ".gz",
+  ".7z",
+  ".exe",
+  ".apk",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".svg",
+  ".webp",
+  ".ico",
+  ".bmp",
+  ".tiff",
+  ".html",
+  ".htm",
+  ".css",
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".json",
+  ".xml",
+  ".txt",
+  ".csv",
+  ".md",
 ];
 
 /**
  * Strips query parameters and sensitive tokens from a video URL for safe logging.
  */
 export function sanitizeVideoUrlForLogging(rawUrl?: string | null): string {
-  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  if (!rawUrl || typeof rawUrl !== "string") return "";
   const trimmed = rawUrl.trim();
   try {
-    const u = new URL(trimmed.startsWith('http://') || trimmed.startsWith('https://') ? trimmed : `https://${trimmed}`);
+    const u = new URL(
+      trimmed.startsWith("http://") || trimmed.startsWith("https://")
+        ? trimmed
+        : `https://${trimmed}`,
+    );
     return `${u.origin}${u.pathname}`;
   } catch {
-    return trimmed.split('?')[0].split('#')[0];
+    return trimmed.split("?")[0].split("#")[0];
   }
 }
 
@@ -97,38 +106,39 @@ export function sanitizeVideoUrlForLogging(rawUrl?: string | null): string {
  * - https://www.youtube.com/v/VIDEO_ID
  */
 export function getYouTubeVideoId(rawUrl?: string | null): string | null {
-  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  if (!rawUrl || typeof rawUrl !== "string") return null;
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
 
   try {
-    const urlString = trimmed.startsWith('http://') || trimmed.startsWith('https://')
-      ? trimmed
-      : `https://${trimmed}`;
+    const urlString =
+      trimmed.startsWith("http://") || trimmed.startsWith("https://")
+        ? trimmed
+        : `https://${trimmed}`;
 
     const parsed = new URL(urlString);
-    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
 
     const isYouTubeDomain =
-      hostname === 'youtube.com' ||
-      hostname.endsWith('.youtube.com') ||
-      hostname === 'youtu.be' ||
-      hostname === 'youtube-nocookie.com' ||
-      hostname.endsWith('.youtube-nocookie.com');
+      hostname === "youtube.com" ||
+      hostname.endsWith(".youtube.com") ||
+      hostname === "youtu.be" ||
+      hostname === "youtube-nocookie.com" ||
+      hostname.endsWith(".youtube-nocookie.com");
 
     if (!isYouTubeDomain) {
       return null;
     }
 
     // 1. youtu.be/<id>
-    if (hostname === 'youtu.be') {
+    if (hostname === "youtu.be") {
       const match = parsed.pathname.match(/^\/([a-zA-Z0-9_-]{11})/);
       if (match) return match[1];
     }
 
     // 2. youtube.com/watch?v=<id>
-    if (parsed.pathname === '/watch') {
-      const v = parsed.searchParams.get('v');
+    if (parsed.pathname === "/watch") {
+      const v = parsed.searchParams.get("v");
       if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
     }
 
@@ -145,7 +155,8 @@ export function getYouTubeVideoId(rawUrl?: string | null): string | null {
     if (vMatch) return vMatch[1];
   } catch {
     // Fallback regex
-    const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([^"&?/\s]{11})/i;
+    const regex =
+      /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([^"&?/\s]{11})/i;
     const match = trimmed.match(regex);
     if (match && match[1] && /^[a-zA-Z0-9_-]{11}$/.test(match[1])) {
       return match[1];
@@ -158,10 +169,14 @@ export function getYouTubeVideoId(rawUrl?: string | null): string | null {
 /**
  * Builds the embeddable YouTube iframe URL.
  */
-export function getYouTubeEmbedUrl(videoId: string, startTime = 0): string {
-  const origin = typeof window !== 'undefined' && window.location?.origin ? `&origin=${encodeURIComponent(window.location.origin)}` : '';
-  const start = startTime > 0 ? `&start=${Math.floor(startTime)}` : '';
-  return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1${origin}${start}`;
+export function getYouTubeEmbedUrl(videoId: string, start = 0): string {
+  const params = new URLSearchParams({
+    enablejsapi: "1",
+    origin: window.location.origin,
+    rel: "0",
+    ...(start > 0 ? { start: String(Math.floor(start)) } : {}),
+  });
+  return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
 }
 
 /**
@@ -175,22 +190,23 @@ export function getYouTubeEmbedUrl(videoId: string, startTime = 0): string {
  * - https://drive.google.com/file/d/FILE_ID/preview
  */
 export function getGoogleDriveFileId(rawUrl?: string | null): string | null {
-  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  if (!rawUrl || typeof rawUrl !== "string") return null;
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
 
   try {
-    const urlString = trimmed.startsWith('http://') || trimmed.startsWith('https://')
-      ? trimmed
-      : `https://${trimmed}`;
+    const urlString =
+      trimmed.startsWith("http://") || trimmed.startsWith("https://")
+        ? trimmed
+        : `https://${trimmed}`;
 
     const parsed = new URL(urlString);
-    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
 
     const isDriveDomain =
-      hostname === 'drive.google.com' ||
-      hostname.endsWith('.drive.google.com') ||
-      hostname === 'docs.google.com';
+      hostname === "drive.google.com" ||
+      hostname.endsWith(".drive.google.com") ||
+      hostname === "docs.google.com";
 
     if (!isDriveDomain) return null;
 
@@ -199,14 +215,15 @@ export function getGoogleDriveFileId(rawUrl?: string | null): string | null {
     if (fileDMatch && fileDMatch[1]) return fileDMatch[1];
 
     // Pattern 2: ?id=FILE_ID
-    const idParam = parsed.searchParams.get('id');
+    const idParam = parsed.searchParams.get("id");
     if (idParam && /^[a-zA-Z0-9_-]+$/.test(idParam)) return idParam;
 
     // Pattern 3: /d/FILE_ID
     const dMatch = parsed.pathname.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (dMatch && dMatch[1]) return dMatch[1];
   } catch {
-    const regex = /(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([a-zA-Z0-9_-]+)/i;
+    const regex =
+      /(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([a-zA-Z0-9_-]+)/i;
     const match = trimmed.match(regex);
     if (match && match[1]) return match[1];
   }
@@ -223,36 +240,40 @@ export function getGoogleDriveFileId(rawUrl?: string | null): string | null {
  * - https://vimeo.com/channels/staffpicks/123456789
  */
 export function getVimeoVideoId(rawUrl?: string | null): string | null {
-  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  if (!rawUrl || typeof rawUrl !== "string") return null;
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
 
   try {
-    const urlString = trimmed.startsWith('http://') || trimmed.startsWith('https://')
-      ? trimmed
-      : `https://${trimmed}`;
+    const urlString =
+      trimmed.startsWith("http://") || trimmed.startsWith("https://")
+        ? trimmed
+        : `https://${trimmed}`;
 
     const parsed = new URL(urlString);
-    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
 
     const isVimeoDomain =
-      hostname === 'vimeo.com' ||
-      hostname.endsWith('.vimeo.com') ||
-      hostname === 'player.vimeo.com';
+      hostname === "vimeo.com" ||
+      hostname.endsWith(".vimeo.com") ||
+      hostname === "player.vimeo.com";
 
     if (!isVimeoDomain) return null;
 
     // player.vimeo.com/video/<id>
-    if (hostname === 'player.vimeo.com') {
+    if (hostname === "player.vimeo.com") {
       const match = parsed.pathname.match(/\/video\/(\d+)/);
       if (match && match[1]) return match[1];
     }
 
     // vimeo.com/<id> or channels/<id>
-    const match = parsed.pathname.match(/(?:channels\/(?:\w+\/)?|groups\/[^/]*\/videos\/|album\/(?:\d+\/)?video\/|video\/|\/)(\d+)/);
+    const match = parsed.pathname.match(
+      /(?:channels\/(?:\w+\/)?|groups\/[^/]*\/videos\/|album\/(?:\d+\/)?video\/|video\/|\/)(\d+)/,
+    );
     if (match && match[1]) return match[1];
   } catch {
-    const regex = /(?:vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/[^/]*\/videos\/|album\/(?:\d+\/)?video\/|video\/|)|player\.vimeo\.com\/video\/)(\d+)/i;
+    const regex =
+      /(?:vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/[^/]*\/videos\/|album\/(?:\d+\/)?video\/|video\/|)|player\.vimeo\.com\/video\/)(\d+)/i;
     const match = trimmed.match(regex);
     if (match && match[1]) return match[1];
   }
@@ -274,24 +295,24 @@ export function getVimeoVideoId(rawUrl?: string | null): string | null {
  */
 export function detectVideoSource(
   rawUrl?: string | null,
-  mimeType?: string | null
+  mimeType?: string | null,
 ): DetectedVideoSource {
-  if (!rawUrl || typeof rawUrl !== 'string') {
-    return { type: 'unknown', url: '' };
+  if (!rawUrl || typeof rawUrl !== "string") {
+    return { type: "unknown", url: "" };
   }
 
   const url = rawUrl.trim();
   if (!url) {
-    return { type: 'unknown', url: '' };
+    return { type: "unknown", url: "" };
   }
 
-  const mime = (mimeType || '').toLowerCase().trim();
+  const mime = (mimeType || "").toLowerCase().trim();
 
   // 1. YouTube
   const ytId = getYouTubeVideoId(url);
   if (ytId) {
     return {
-      type: 'youtube',
+      type: "youtube",
       url,
       videoId: ytId,
       previewUrl: getYouTubeEmbedUrl(ytId),
@@ -302,7 +323,7 @@ export function detectVideoSource(
   const vimeoId = getVimeoVideoId(url);
   if (vimeoId) {
     return {
-      type: 'vimeo',
+      type: "vimeo",
       url,
       videoId: vimeoId,
       previewUrl: `https://player.vimeo.com/video/${vimeoId}`,
@@ -313,7 +334,7 @@ export function detectVideoSource(
   const driveId = getGoogleDriveFileId(url);
   if (driveId) {
     return {
-      type: 'google-drive',
+      type: "google-drive",
       url,
       videoId: driveId,
       previewUrl: `https://drive.google.com/file/d/${driveId}/preview`,
@@ -322,72 +343,80 @@ export function detectVideoSource(
   }
 
   // Parse path and protocol (stripping queries and hashes for extension matching)
-  let pathname = '';
-  let hostname = '';
-  let protocol = '';
+  let pathname = "";
+  let hostname = "";
+  let protocol = "";
 
   try {
-    const parsed = new URL(url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`);
+    const parsed = new URL(
+      url.startsWith("http://") || url.startsWith("https://")
+        ? url
+        : `https://${url}`,
+    );
     pathname = parsed.pathname.toLowerCase();
     hostname = parsed.hostname.toLowerCase();
     protocol = parsed.protocol.toLowerCase();
   } catch {
-    pathname = url.split('?')[0].split('#')[0].toLowerCase();
+    pathname = url.split("?")[0].split("#")[0].toLowerCase();
   }
 
   // Only http/https supported for web video playback
-  if (protocol && protocol !== 'http:' && protocol !== 'https:') {
-    return { type: 'unknown', url };
+  if (protocol && protocol !== "http:" && protocol !== "https:") {
+    return { type: "unknown", url };
   }
 
   // 4. HLS (.m3u8)
   if (
-    pathname.endsWith('.m3u8') ||
-    mime.includes('application/x-mpegurl') ||
-    mime.includes('application/vnd.apple.mpegurl')
+    pathname.endsWith(".m3u8") ||
+    mime.includes("application/x-mpegurl") ||
+    mime.includes("application/vnd.apple.mpegurl")
   ) {
-    return { type: 'hls', url };
+    return { type: "hls", url };
   }
 
   // 5. DASH (.mpd)
-  if (pathname.endsWith('.mpd') || mime.includes('application/dash+xml')) {
-    return { type: 'dash', url };
+  if (pathname.endsWith(".mpd") || mime.includes("application/dash+xml")) {
+    return { type: "dash", url };
   }
 
   // 6. Direct / AWS S3 / CloudFront / CDN
   // Check known direct video extensions
-  const hasDirectVideoExt = DIRECT_VIDEO_EXTENSIONS.some((ext) => pathname.endsWith(ext));
-  if (hasDirectVideoExt || mime.startsWith('video/')) {
-    return { type: 'direct', url };
+  const hasDirectVideoExt = DIRECT_VIDEO_EXTENSIONS.some((ext) =>
+    pathname.endsWith(ext),
+  );
+  if (hasDirectVideoExt || mime.startsWith("video/")) {
+    return { type: "direct", url };
   }
 
   // Check known non-video extensions (reject .pdf, .zip, .png, etc.)
-  const hasNonVideoExt = NON_VIDEO_EXTENSIONS.some((ext) => pathname.endsWith(ext));
+  const hasNonVideoExt = NON_VIDEO_EXTENSIONS.some((ext) =>
+    pathname.endsWith(ext),
+  );
   if (hasNonVideoExt) {
-    return { type: 'unknown', url };
+    return { type: "unknown", url };
   }
 
   // S3 or CloudFront or CDN URLs without extension (e.g. S3 keys like /video/abc123)
   const isS3OrCloudFrontOrCdn =
-    hostname.endsWith('.amazonaws.com') ||
-    hostname.endsWith('.cloudfront.net') ||
-    hostname.includes('s3') ||
-    hostname.includes('cdn') ||
-    hostname.includes('storage.googleapis.com') ||
-    hostname.endsWith('.core.windows.net') ||
-    hostname.includes('digitaloceanspaces.com') ||
-    hostname.includes('supabase.co');
+    hostname.endsWith(".amazonaws.com") ||
+    hostname.endsWith(".cloudfront.net") ||
+    hostname.includes("s3") ||
+    hostname.includes("cdn") ||
+    hostname.includes("storage.googleapis.com") ||
+    hostname.endsWith(".core.windows.net") ||
+    hostname.includes("digitaloceanspaces.com") ||
+    hostname.includes("supabase.co");
 
   if (isS3OrCloudFrontOrCdn) {
-    return { type: 'direct', url };
+    return { type: "direct", url };
   }
 
   // Fallback for valid HTTP/HTTPS endpoints without non-video extensions
-  if (protocol === 'http:' || protocol === 'https:') {
-    return { type: 'direct', url };
+  if (protocol === "http:" || protocol === "https:") {
+    return { type: "direct", url };
   }
 
-  return { type: 'unknown', url };
+  return { type: "unknown", url };
 }
 
 /**
@@ -396,17 +425,17 @@ export function detectVideoSource(
 export function getVideoProvider(url?: string | null): VideoProvider {
   const source = detectVideoSource(url);
   switch (source.type) {
-    case 'youtube':
-      return 'youtube';
-    case 'vimeo':
-      return 'vimeo';
-    case 'google-drive':
-      return 'google-drive';
-    case 'direct':
-    case 'hls':
-    case 'dash':
-      return 'html5';
+    case "youtube":
+      return "youtube";
+    case "vimeo":
+      return "vimeo";
+    case "google-drive":
+      return "google-drive";
+    case "direct":
+    case "hls":
+    case "dash":
+      return "html5";
     default:
-      return 'unknown';
+      return "unknown";
   }
 }

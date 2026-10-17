@@ -12,7 +12,11 @@ import {
   CircleAlert as AlertCircle,
   Cloud,
 } from "lucide-react";
-import type { Video, VideoProgress, VideoProgressCreateInput } from "@/types/api";
+import type {
+  Video,
+  VideoProgress,
+  VideoProgressCreateInput,
+} from "@/types/api";
 import { videoService } from "@/services";
 import {
   detectVideoSource,
@@ -69,7 +73,7 @@ interface YouTubeWindow extends Window {
           onReady?: (event: YouTubePlayerEvent) => void;
           onStateChange?: (event: YouTubePlayerEvent) => void;
         };
-      }
+      },
     ) => YouTubePlayerInstance;
   };
   onYouTubeIframeAPIReady?: () => void;
@@ -111,10 +115,12 @@ export default function VideoPlayer({
     setDriveDirectStreamFailed(false);
   }, [videoUrl]);
 
-  // Is this playing as a native HTML5 video?
   // Native HTML5 is used for direct files, cloud storage (S3/GCS/Azure/CDN), HLS, DASH,
   // and Google Drive when direct streaming is available.
-  const isDriveNative = source.type === "google-drive" && !driveDirectStreamFailed && !!source.streamUrl;
+  const isDriveNative =
+    source.type === "google-drive" &&
+    !driveDirectStreamFailed &&
+    !!source.streamUrl;
   const isNativeVideo =
     source.type === "direct" ||
     source.type === "hls" ||
@@ -168,13 +174,19 @@ export default function VideoPlayer({
   }, [video]);
 
   // Authoritative progress tracking & resume refs
-  const [savedProgress, setSavedProgress] = useState<VideoProgress | null>(null);
+  const [savedProgress, setSavedProgress] = useState<VideoProgress | null>(
+    null,
+  );
   const isPlayingRef = useRef<boolean>(false);
   const latestCurrentTimeRef = useRef<number>(0);
   const latestDurationRef = useRef<number>(0);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressRequestInFlightRef = useRef<boolean>(false);
-  const pendingPausePositionRef = useRef<number | null>(null);
+  const pendingRef = useRef<{
+    position: number;
+    isFinal: boolean;
+    isPause: boolean;
+  } | null>(null);
   const lastSavedPositionRef = useRef<number>(0);
   const finalProgressSentRef = useRef<boolean>(false);
   const prevVideoKeyRef = useRef<string | null>(null);
@@ -184,9 +196,8 @@ export default function VideoPlayer({
   const resumeAppliedRef = useRef<boolean>(false);
   const isCompletedRef = useRef<boolean>(false);
 
-  // YouTube IFrame API adapter refs
+  // YouTube IFrame API adapter ref
   const ytPlayerRef = useRef<YouTubePlayerInstance | null>(null);
-  const ytDurationRef = useRef<number>(0);
 
   // Synchronize playing ref
   useEffect(() => {
@@ -204,42 +215,54 @@ export default function VideoPlayer({
 
   // Central progress saving API caller
   const sendVideoProgress = useCallback(
-    async (position: number, isFinal = false) => {
-      // Do not attempt to save progress if the provider is a third-party sandboxed iframe without playback API
+    async (position: number, isFinal = false, isPause = false) => {
+      // Providers without a playback API cannot be tracked
       if (
         (source.type === "google-drive" && driveDirectStreamFailed) ||
         source.type === "vimeo" ||
         source.type === "unknown"
       ) {
-        console.info("[LMS VIDEO: SAVE_SKIPPED] Sandboxed cross-origin provider does not expose playback events (Same-Origin Policy limitation).", {
-          sourceType: source.type,
-          videoRefId: activeVideoIdRef.current,
-        });
+        console.info(
+          "[LMS VIDEO: SAVE_SKIPPED] Sandboxed cross-origin provider does not expose playback events (Same-Origin Policy limitation).",
+          {
+            sourceType: source.type,
+            videoRefId: activeVideoIdRef.current,
+          },
+        );
         return;
       }
 
       const vRefId = activeVideoIdRef.current;
       if (!vRefId) {
-        console.warn("[LMS VIDEO: SAVE_ABORTED] Missing or stale videoRefId", { vRefId });
+        console.warn("[LMS VIDEO: SAVE_ABORTED] Missing or stale videoRefId", {
+          vRefId,
+        });
         return;
       }
 
       // Guard: Do not overwrite a valid saved position with 0 during initial video loading
       if (
         !isFinal &&
+        !isPause &&
         !resumeAppliedRef.current &&
         resumePositionRef.current !== null &&
         resumePositionRef.current > 0 &&
         position === 0
       ) {
-        console.log("[LMS VIDEO: SAVE_SUPPRESSED] Suppressed zero overwrite while initial resume is pending");
+        console.log(
+          "[LMS VIDEO: SAVE_SUPPRESSED] Suppressed zero overwrite while initial resume is pending",
+        );
         return;
       }
 
-      // Guard: Avoid overlapping API requests
+      // Guard: Avoid overlapping API requests. Queue the flags too, and never
+      // let a normal 10s tick replace a queued pause/final.
       if (progressRequestInFlightRef.current) {
-        console.log("[LMS VIDEO: QUEUED] Request already in flight, queueing position:", position);
-        pendingPausePositionRef.current = position;
+        const prev = pendingRef.current;
+        const prevImportant = !!prev && (prev.isFinal || prev.isPause);
+        if (isFinal || isPause || !prevImportant) {
+          pendingRef.current = { position, isFinal, isPause };
+        }
         return;
       }
 
@@ -248,7 +271,8 @@ export default function VideoPlayer({
       if (source.type === "youtube" && ytPlayerRef.current) {
         try {
           const d = ytPlayerRef.current.getDuration?.();
-          if (typeof d === "number" && Number.isFinite(d) && d > 0) totalDur = d;
+          if (typeof d === "number" && Number.isFinite(d) && d > 0)
+            totalDur = d;
         } catch {
           // Ignore error reading duration from YouTube API
         }
@@ -260,7 +284,9 @@ export default function VideoPlayer({
         totalDur = latestDurationRef.current;
       }
       if (totalDur <= 0) {
-        const vMeta = videoRef.current as unknown as VideoMetaRecord | undefined;
+        const vMeta = videoRef.current as unknown as
+          | VideoMetaRecord
+          | undefined;
         totalDur = vMeta?.durationSec || vMeta?.duration || 0;
       }
       if (totalDur <= 0 && savedProgress?.videoDuration) {
@@ -269,38 +295,43 @@ export default function VideoPlayer({
 
       const safeDuration = Math.max(0, Math.floor(totalDur));
 
-      // CRITICAL REQUIREMENT: Never send videoDuration: 0 when duration has not loaded yet
+      // Never send videoDuration: 0 when duration has not loaded yet
       if (!safeDuration || safeDuration <= 0) {
-        console.warn("[LMS VIDEO: SAVE_ABORTED] Video duration metadata is not yet available. Suppressing save.");
+        console.warn(
+          "[LMS VIDEO: SAVE_ABORTED] Video duration metadata is not yet available. Suppressing save.",
+        );
         return;
       }
 
-      const safePosition = Math.min(safeDuration, Math.max(0, Math.floor(position)));
+      const safePosition = Math.min(
+        safeDuration,
+        Math.max(0, Math.floor(position)),
+      );
 
-      // Guard: Do not repeatedly send unchanged position if difference is less than 1s (unless marking completion)
-      if (!isFinal && Math.abs(safePosition - lastSavedPositionRef.current) < 1 && lastSavedPositionRef.current > 0) {
+      // Guard: skip unchanged position (< 1s) unless final or explicit pause
+      if (
+        !isFinal &&
+        !isPause &&
+        Math.abs(safePosition - lastSavedPositionRef.current) < 1 &&
+        lastSavedPositionRef.current > 0
+      ) {
         return;
       }
 
-      // Exact 3-field payload required by LMS API specification:
-      // Only videoRefId, lastWatchedDuration, and videoDuration are allowed.
+      // Exact 3-field payload required by the LMS API
       const payload: VideoProgressCreateInput = {
         videoRefId: String(vRefId),
         lastWatchedDuration: safePosition,
         videoDuration: safeDuration,
       };
 
-      console.log("[LMS VIDEO: VALIDATION_PASSED]", {
-        videoRefId: payload.videoRefId,
-        lastWatchedDuration: payload.lastWatchedDuration,
-        videoDuration: payload.videoDuration,
-      });
-
-      console.log("[LMS VIDEO: API_INVOKED] videoService.createVideoProgress called with payload:", payload);
+      console.log(
+        "[LMS VIDEO: API_INVOKED] videoService.createVideoProgress called with payload:",
+        payload,
+      );
       progressRequestInFlightRef.current = true;
 
       try {
-        console.log("[LMS VIDEO: HTTP_REQUEST_STARTED] POST /api/video/createVideoProgress");
         await videoService.createVideoProgress(payload);
         if (activeVideoIdRef.current === vRefId) {
           lastSavedPositionRef.current = safePosition;
@@ -309,6 +340,8 @@ export default function VideoPlayer({
           videoRefId: payload.videoRefId,
           savedPosition: safePosition,
           duration: safeDuration,
+          isPause,
+          isFinal,
         });
       } catch (err) {
         console.error("[LMS VIDEO: SAVE_FAILED]", {
@@ -317,18 +350,22 @@ export default function VideoPlayer({
         });
       } finally {
         progressRequestInFlightRef.current = false;
-        // Process queued pending pause position if one arrived while request was in-flight and video has not changed
-        if (pendingPausePositionRef.current !== null && activeVideoIdRef.current === vRefId) {
-          const nextPos = pendingPausePositionRef.current;
-          pendingPausePositionRef.current = null;
-          void sendVideoProgress(nextPos, isFinal);
-        } else {
-          pendingPausePositionRef.current = null;
+        const next = pendingRef.current;
+        pendingRef.current = null;
+        if (next && activeVideoIdRef.current === vRefId) {
+          void sendVideoProgressRef.current(
+            next.position,
+            next.isFinal,
+            next.isPause,
+          );
         }
       }
     },
-    [source.type, driveDirectStreamFailed, savedProgress?.videoDuration]
+    [source.type, driveDirectStreamFailed, savedProgress?.videoDuration],
   );
+
+  const sendVideoProgressRef = useRef(sendVideoProgress);
+  sendVideoProgressRef.current = sendVideoProgress;
 
   // Stop periodic progress tracking timer
   const stopProgressTracking = useCallback(() => {
@@ -339,14 +376,13 @@ export default function VideoPlayer({
     }
   }, []);
 
-  const sendVideoProgressRef = useRef(sendVideoProgress);
-  sendVideoProgressRef.current = sendVideoProgress;
+  const stopProgressTrackingRef = useRef(stopProgressTracking);
+  stopProgressTrackingRef.current = stopProgressTracking;
 
   // Start periodic 10-second progress tracking timer (only during active playback)
   const startProgressTracking = useCallback(() => {
     stopProgressTracking();
 
-    // Sandboxed iframes without playback API do not expose real-time playback
     if (
       (source.type === "google-drive" && driveDirectStreamFailed) ||
       source.type === "vimeo" ||
@@ -355,9 +391,11 @@ export default function VideoPlayer({
       return;
     }
 
-    console.log("[LMS VIDEO: TIMER_STARTED] 10-second progress interval started for video:", activeVideoIdRef.current);
+    console.log(
+      "[LMS VIDEO: TIMER_STARTED] 10-second progress interval started for video:",
+      activeVideoIdRef.current,
+    );
 
-    // Standard LMS interval: save progress every 10 seconds of active playback
     progressTimerRef.current = setInterval(() => {
       let isStillPlaying = isPlayingRef.current;
       if (htmlVideoRef.current) {
@@ -382,7 +420,10 @@ export default function VideoPlayer({
       } else if (htmlVideoRef.current) {
         currentPos = htmlVideoRef.current.currentTime;
       }
-      if ((!Number.isFinite(currentPos) || currentPos <= 0) && latestCurrentTimeRef.current > 0) {
+      if (
+        (!Number.isFinite(currentPos) || currentPos <= 0) &&
+        latestCurrentTimeRef.current > 0
+      ) {
         currentPos = latestCurrentTimeRef.current;
       }
 
@@ -391,12 +432,12 @@ export default function VideoPlayer({
           videoRefId: activeVideoIdRef.current,
           currentPosition: Math.floor(currentPos),
         });
-        void sendVideoProgressRef.current(currentPos, false);
+        void sendVideoProgressRef.current(currentPos, false, false);
       }
     }, 10000);
   }, [source.type, driveDirectStreamFailed, stopProgressTracking]);
 
-  // Pause flush: stops timer and immediately saves current position
+  // Pause flush used on tab hide / unmount
   const saveProgressOnPause = useCallback(
     async (explicitPosition?: number) => {
       if (finalProgressSentRef.current) return;
@@ -413,7 +454,10 @@ export default function VideoPlayer({
         } else if (htmlVideoRef.current) {
           pos = htmlVideoRef.current.currentTime;
         }
-        if ((typeof pos !== "number" || !Number.isFinite(pos) || pos <= 0) && latestCurrentTimeRef.current > 0) {
+        if (
+          (typeof pos !== "number" || !Number.isFinite(pos) || pos <= 0) &&
+          latestCurrentTimeRef.current > 0
+        ) {
           pos = latestCurrentTimeRef.current;
         }
       }
@@ -423,30 +467,24 @@ export default function VideoPlayer({
           videoRefId: activeVideoIdRef.current,
           pausePosition: Math.floor(pos),
         });
-        await sendVideoProgressRef.current(pos, false);
+        await sendVideoProgressRef.current(pos, false, true);
       }
     },
-    [source.type]
+    [source.type],
   );
 
   const saveProgressOnPauseRef = useRef(saveProgressOnPause);
   saveProgressOnPauseRef.current = saveProgressOnPause;
 
-  const stopProgressTrackingRef = useRef(stopProgressTracking);
-  stopProgressTrackingRef.current = stopProgressTracking;
-
   // Play handler
   const handlePlay = useCallback(() => {
-    console.log("[LMS VIDEO: EVENT_PLAY]", {
-      videoRefId: activeVideoIdRef.current,
-      sourceType: source.type,
-    });
     setPlaying(true);
     isPlayingRef.current = true;
+    finalProgressSentRef.current = false; // allow saving again after a replay
     startProgressTracking();
-  }, [source.type, startProgressTracking]);
+  }, [startProgressTracking]);
 
-  // Pause handler
+  // Pause handler: stops timer and IMMEDIATELY saves the latest position
   const handlePause = useCallback(() => {
     console.log("[LMS VIDEO: EVENT_PAUSE]", {
       videoRefId: activeVideoIdRef.current,
@@ -455,8 +493,35 @@ export default function VideoPlayer({
     setPlaying(false);
     isPlayingRef.current = false;
     stopProgressTracking();
-    void saveProgressOnPause();
-  }, [source.type, stopProgressTracking, saveProgressOnPause]);
+
+    let currentPos: number | undefined;
+    if (source.type === "youtube" && ytPlayerRef.current) {
+      try {
+        const t = ytPlayerRef.current.getCurrentTime?.();
+        if (typeof t === "number" && Number.isFinite(t)) currentPos = t;
+      } catch {
+        // Ignore YouTube API error
+      }
+    } else if (htmlVideoRef.current) {
+      const t = htmlVideoRef.current.currentTime;
+      if (typeof t === "number" && Number.isFinite(t)) currentPos = t;
+    }
+
+    if (
+      typeof currentPos !== "number" ||
+      !Number.isFinite(currentPos) ||
+      currentPos < 0
+    ) {
+      currentPos = latestCurrentTimeRef.current;
+    }
+
+    console.log("[LMS VIDEO: PAUSE_FLUSH_TRIGGERED]", {
+      videoRefId: activeVideoIdRef.current,
+      pausePosition: currentPos,
+    });
+
+    void sendVideoProgressRef.current(currentPos, false, true);
+  }, [source.type, stopProgressTracking]);
 
   // Ended handler
   const handleEnded = useCallback(() => {
@@ -479,7 +544,11 @@ export default function VideoPlayer({
       finalDur = htmlVideoRef.current.duration || 0;
     }
     if (finalDur <= 0) {
-      finalDur = duration || lastSavedPositionRef.current || 0;
+      finalDur =
+        latestDurationRef.current ||
+        duration ||
+        lastSavedPositionRef.current ||
+        0;
     }
 
     console.log("[LMS VIDEO: EVENT_ENDED]", {
@@ -488,8 +557,8 @@ export default function VideoPlayer({
       isCompleted: true,
     });
 
-    void sendVideoProgress(finalDur, true);
-  }, [source.type, stopProgressTracking, duration, sendVideoProgress]);
+    void sendVideoProgressRef.current(finalDur, true, false);
+  }, [source.type, stopProgressTracking, duration]);
 
   // Seeking handler
   const handleSeek = useCallback((newTime: number) => {
@@ -520,11 +589,15 @@ export default function VideoPlayer({
         return;
       }
 
-      if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === "function") {
+      if (
+        ytPlayerRef.current &&
+        typeof ytPlayerRef.current.seekTo === "function"
+      ) {
         let ytDuration = 0;
         try {
           const d = ytPlayerRef.current.getDuration?.();
-          if (typeof d === "number" && Number.isFinite(d) && d > 0) ytDuration = d;
+          if (typeof d === "number" && Number.isFinite(d) && d > 0)
+            ytDuration = d;
         } catch {
           // Ignore error reading duration from YouTube API
         }
@@ -542,13 +615,16 @@ export default function VideoPlayer({
           setResumeToast(safePos);
           setTimeout(() => setResumeToast(null), 3500);
         } catch (err) {
-          console.warn("[VIDEO RESUME] Unable to apply YouTube saved position", err);
+          console.warn(
+            "[VIDEO RESUME] Unable to apply YouTube saved position",
+            err,
+          );
         }
       }
       return;
     }
 
-    // 2. HTML5 Video Element (Direct / AWS S3 / CloudFront / GCS / Azure / HLS / DASH)
+    // 2. HTML5 Video Element (Direct / S3 / CloudFront / GCS / Azure / HLS / DASH)
     const videoEl = htmlVideoRef.current;
     if (videoEl) {
       // Must wait until metadata and duration are ready
@@ -562,13 +638,18 @@ export default function VideoPlayer({
 
       const totalDur = videoEl.duration;
 
-      // If video was already completed or saved near the very end, start from 0
-      if (isCompletedRef.current || (totalDur > 0 && savedPos >= totalDur - 2)) {
+      // Already completed or saved near the very end: start from 0
+      if (
+        isCompletedRef.current ||
+        (totalDur > 0 && savedPos >= totalDur - 2)
+      ) {
         console.log("[LMS VIDEO: RESUME_START_ZERO]", {
           videoRefId: activeVideoIdRef.current,
           savedPosition: savedPos,
           totalDuration: totalDur,
-          reason: isCompletedRef.current ? "already_completed" : "near_end_boundary",
+          reason: isCompletedRef.current
+            ? "already_completed"
+            : "near_end_boundary",
         });
         videoEl.currentTime = 0;
         setCurrent(0);
@@ -592,13 +673,10 @@ export default function VideoPlayer({
       return;
     }
 
-    // 3. Google Drive / Other Embeds:
-    // Google Drive's sandboxed preview iframe does not expose an external JavaScript seek API.
-    // Instead, start-time resume is passed directly in the iframe src URL query parameter '?t=...s'.
+    // 3. Google Drive preview iframe: no seek API; start time is passed via '?t=...s'
     if (source.type === "google-drive") {
       console.log("[LMS VIDEO: GOOGLE_DRIVE_NOTICE]", {
         videoRefId: activeVideoIdRef.current,
-        note: "Google Drive sandboxed preview iframe does not expose an external JavaScript seek API. Start position is applied via iframe URL parameter '?t=...s'.",
         startPosition: savedPos,
       });
       resumeAppliedRef.current = true;
@@ -609,7 +687,21 @@ export default function VideoPlayer({
     }
   }, [source.type]);
 
-  // Video Changed: Reset all tracking states & fetch saved progress
+  // Keep latest handlers in a ref so the YouTube player is created only once
+  const handlersRef = useRef({
+    handlePlay,
+    handlePause,
+    handleEnded,
+    applyResumePosition,
+  });
+  handlersRef.current = {
+    handlePlay,
+    handlePause,
+    handleEnded,
+    applyResumePosition,
+  };
+
+  // Video changed: reset all tracking state & fetch saved progress
   useEffect(() => {
     const vRefId = resolveVideoRefId();
     const videoKey = `${vRefId || ""}-${videoUrl || ""}`;
@@ -620,7 +712,7 @@ export default function VideoPlayer({
 
     stopProgressTracking();
     progressRequestInFlightRef.current = false;
-    pendingPausePositionRef.current = null;
+    pendingRef.current = null;
     resumeAppliedRef.current = false;
     resumePositionRef.current = null;
     isCompletedRef.current = false;
@@ -651,10 +743,10 @@ export default function VideoPlayer({
         if (progress) {
           const progMeta = progress as unknown as VideoMetaRecord;
           const rawDuration =
-            progress.lastWatchedDuration ??
-            progMeta?.last_watched_duration;
+            progress.lastWatchedDuration ?? progMeta?.last_watched_duration;
           const parsed = Number(rawDuration);
-          const durationVal = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+          const durationVal =
+            Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
           resumePositionRef.current = durationVal;
           isCompletedRef.current = Boolean(progress.isCompleted);
           if (durationVal > 0) {
@@ -669,21 +761,25 @@ export default function VideoPlayer({
           resumePositionRef.current = 0;
           isCompletedRef.current = false;
         }
-        applyResumePosition();
+        handlersRef.current.applyResumePosition();
       })
       .catch((err) => {
-        console.warn("[LMS VIDEO: GET_PROGRESS_FAILED]", { videoRefId: vRefId, error: err });
+        console.warn("[LMS VIDEO: GET_PROGRESS_FAILED]", {
+          videoRefId: vRefId,
+          error: err,
+        });
         if (active && activeVideoIdRef.current === vRefId) {
           resumePositionRef.current = 0;
           isCompletedRef.current = false;
-          applyResumePosition();
+          handlersRef.current.applyResumePosition();
         }
       });
 
     return () => {
       active = false;
+      prevVideoKeyRef.current = null; // lets the StrictMode re-run fetch again
     };
-  }, [currentVideoRefId, videoUrl, resolveVideoRefId, stopProgressTracking, applyResumePosition]);
+  }, [currentVideoRefId, videoUrl, resolveVideoRefId, stopProgressTracking]);
 
   // Lifecycle flush on tab hide / page leave / unmount
   useEffect(() => {
@@ -692,7 +788,6 @@ export default function VideoPlayer({
         void saveProgressOnPauseRef.current?.();
       }
     };
-
     const handleBeforeUnload = () => {
       if (isPlayingRef.current) {
         void saveProgressOnPauseRef.current?.();
@@ -724,105 +819,72 @@ export default function VideoPlayer({
     }
   }, [source.type, videoUrl]);
 
-  // YouTube postMessage and IFrame API adapter
+  // YouTube IFrame API: one stable player per video
   useEffect(() => {
     if (source.type !== "youtube" || !source.videoId) return;
-
     let active = true;
-
-    const handleMessage = (e: MessageEvent) => {
-      try {
-        let data = e.data;
-        if (typeof data === "string") {
-          data = JSON.parse(data);
-        }
-        if (data && data.event === "onStateChange") {
-          if (data.info === 1) {
-            handlePlay();
-          } else if (data.info === 2) {
-            handlePause();
-          } else if (data.info === 0) {
-            handleEnded();
-          }
-        } else if (data && data.event === "infoDelivery" && data.info) {
-          if (typeof data.info.currentTime === "number") {
-            latestCurrentTimeRef.current = data.info.currentTime;
-          }
-          if (typeof data.info.duration === "number") {
-            ytDurationRef.current = data.info.duration;
-            setDuration(data.info.duration);
-          }
-        }
-      } catch {
-        // Ignore malformed postMessage data
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
 
     const initYt = () => {
       if (!iframeRef.current || !active) return;
+      const YT = (window as unknown as YouTubeWindow).YT;
+      if (!YT?.Player) return;
       try {
-        const win = window as unknown as YouTubeWindow;
-        const YT = win.YT;
-        if (YT && YT.Player) {
-          ytPlayerRef.current = new YT.Player(iframeRef.current, {
-            events: {
-              onReady: (event: YouTubePlayerEvent) => {
-                ytPlayerRef.current = event.target;
-                applyResumePosition();
-              },
-              onStateChange: (event: YouTubePlayerEvent) => {
-                if (event.data === 1) {
-                  handlePlay();
-                } else if (event.data === 2) {
-                  handlePause();
-                } else if (event.data === 0) {
-                  handleEnded();
-                }
-              },
+        new YT.Player(iframeRef.current, {
+          events: {
+            onReady: (event: YouTubePlayerEvent) => {
+              if (!active) return;
+              ytPlayerRef.current = event.target; // only usable after ready
+              const d = event.target.getDuration?.();
+              if (typeof d === "number" && d > 0) {
+                latestDurationRef.current = d;
+                setDuration(d);
+              }
+              handlersRef.current.applyResumePosition();
             },
-          });
-        }
+            onStateChange: (event: YouTubePlayerEvent) => {
+              if (event.data === 1) handlersRef.current.handlePlay();
+              else if (event.data === 2) handlersRef.current.handlePause();
+              else if (event.data === 0) handlersRef.current.handleEnded();
+            },
+          },
+        });
       } catch {
         // Ignore YouTube player initialization error
       }
     };
 
-    if (typeof window !== "undefined") {
-      const win = window as unknown as YouTubeWindow;
-      if (win.YT && win.YT.Player) {
+    const win = window as unknown as YouTubeWindow;
+    if (win.YT?.Player) {
+      initYt();
+    } else {
+      const existing = win.onYouTubeIframeAPIReady;
+      win.onYouTubeIframeAPIReady = () => {
+        existing?.();
         initYt();
-      } else {
-        const existingCallback = win.onYouTubeIframeAPIReady;
-        win.onYouTubeIframeAPIReady = () => {
-          if (typeof existingCallback === "function") existingCallback();
-          initYt();
-        };
-        if (!document.getElementById("yt-iframe-api-script")) {
-          const tag = document.createElement("script");
-          tag.id = "yt-iframe-api-script";
-          tag.src = "https://www.youtube.com/iframe_api";
-          document.body.appendChild(tag);
-        }
+      };
+      if (!document.getElementById("yt-iframe-api-script")) {
+        const tag = document.createElement("script");
+        tag.id = "yt-iframe-api-script";
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.body.appendChild(tag);
       }
     }
 
     return () => {
       active = false;
-      window.removeEventListener("message", handleMessage);
-      try {
-        ytPlayerRef.current?.destroy?.();
-      } catch {
-        // Ignore YouTube player destroy error
-      }
+      // Do NOT call destroy(): it removes the React-owned iframe from the DOM
+      // (and breaks the StrictMode re-run).
       ytPlayerRef.current = null;
     };
-  }, [source.type, source.videoId, handlePlay, handlePause, handleEnded, applyResumePosition]);
+  }, [source.type, source.videoId]);
 
-  // Synchronize resume position for YouTube when savedProgress loads after player initialization
+  // Resume for YouTube when savedProgress arrives after the player is ready
   useEffect(() => {
-    if (source.type === "youtube" && !resumeAppliedRef.current && savedProgress) {
+    if (
+      source.type === "youtube" &&
+      !resumeAppliedRef.current &&
+      savedProgress
+    ) {
       applyResumePosition();
     }
   }, [savedProgress, source.type, applyResumePosition]);
@@ -832,7 +894,10 @@ export default function VideoPlayer({
     if (source.type !== "hls" || !htmlVideoRef.current) return;
     const v = htmlVideoRef.current;
 
-    const win = typeof window !== "undefined" ? (window as unknown as YouTubeWindow) : null;
+    const win =
+      typeof window !== "undefined"
+        ? (window as unknown as YouTubeWindow)
+        : null;
     if (v.canPlayType("application/vnd.apple.mpegurl")) {
       v.src = source.url;
     } else if (win?.Hls && win.Hls.isSupported()) {
@@ -863,7 +928,7 @@ export default function VideoPlayer({
     applyResumePosition();
   };
 
-  // Synchronize resume position for HTML5 when savedProgress arrives after metadata loaded
+  // Resume for HTML5 when savedProgress arrives after metadata loaded
   useEffect(() => {
     if (!resumeAppliedRef.current && savedProgress) {
       applyResumePosition();
@@ -1019,16 +1084,13 @@ export default function VideoPlayer({
       {/* 1. YouTube Player */}
       {source.type === "youtube" && source.videoId ? (
         <>
+          {/* key and src must NOT depend on savedProgress, or the iframe reloads
+              and the YT.Player instance is lost. Resume uses seekTo instead. */}
           <iframe
             ref={iframeRef}
-            key={`${source.videoId}-${savedProgress?.lastWatchedDuration || 0}`}
+            key={source.videoId}
             id="youtube-player-frame"
-            src={getYouTubeEmbedUrl(
-              source.videoId,
-              savedProgress && !savedProgress.isCompleted
-                ? savedProgress.lastWatchedDuration
-                : 0
-            )}
+            src={getYouTubeEmbedUrl(source.videoId, 0)}
             title={displayTitle}
             className="h-full w-full border-0 block"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -1045,7 +1107,9 @@ export default function VideoPlayer({
           {iframeError && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/80 p-4 text-center text-white">
               <AlertCircle className="h-10 w-10 text-red-400" />
-              <p className="text-sm font-medium">Unable to play this YouTube video.</p>
+              <p className="text-sm font-medium">
+                Unable to play this YouTube video.
+              </p>
             </div>
           )}
         </>
@@ -1072,36 +1136,45 @@ export default function VideoPlayer({
           {iframeError && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/80 p-4 text-center text-white">
               <AlertCircle className="h-10 w-10 text-red-400" />
-              <p className="text-sm font-medium">Unable to play this Vimeo video.</p>
+              <p className="text-sm font-medium">
+                Unable to play this Vimeo video.
+              </p>
             </div>
           )}
         </>
       ) : null}
 
-      {/* 3. Google Drive Fallback Player (Plays via official Google Drive preview embed when direct stream is unavailable) */}
-      {source.type === "google-drive" && (driveDirectStreamFailed || !source.streamUrl) && source.videoId ? (
+      {/* 3. Google Drive Fallback Player (official preview embed when direct stream is unavailable) */}
+      {source.type === "google-drive" &&
+      (driveDirectStreamFailed || !source.streamUrl) &&
+      source.videoId ? (
         <div className="relative h-full w-full bg-black">
-          {/* Informational provider badge */}
           <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1 text-xs text-gray-300 backdrop-blur-sm pointer-events-none border border-white/10">
             <Cloud className="h-3.5 w-3.5 text-blue-400" />
             <span>Google Drive Preview</span>
           </div>
 
-          {/* Informational notice when saved progress exists from previous session */}
-          {savedProgress && !savedProgress.isCompleted && savedProgress.lastWatchedDuration > 0 && (
-            <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5 rounded-md bg-black/75 px-3 py-1.5 text-xs text-amber-200 backdrop-blur-sm border border-amber-500/30">
-              <RotateCcw className="h-3.5 w-3.5 text-amber-400" />
-              <span>
-                Resumed from: <strong>{formatTime(savedProgress.lastWatchedDuration)}</strong>
-              </span>
-            </div>
-          )}
+          {savedProgress &&
+            !savedProgress.isCompleted &&
+            savedProgress.lastWatchedDuration > 0 && (
+              <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5 rounded-md bg-black/75 px-3 py-1.5 text-xs text-amber-200 backdrop-blur-sm border border-amber-500/30">
+                <RotateCcw className="h-3.5 w-3.5 text-amber-400" />
+                <span>
+                  Resumed from:{" "}
+                  <strong>
+                    {formatTime(savedProgress.lastWatchedDuration)}
+                  </strong>
+                </span>
+              </div>
+            )}
 
           <iframe
             ref={iframeRef}
             key={`${source.videoId}-${savedProgress?.lastWatchedDuration || 0}`}
             src={`https://drive.google.com/file/d/${source.videoId}/preview${
-              savedProgress && !savedProgress.isCompleted && savedProgress.lastWatchedDuration > 0
+              savedProgress &&
+              !savedProgress.isCompleted &&
+              savedProgress.lastWatchedDuration > 0
                 ? `?t=${Math.floor(savedProgress.lastWatchedDuration)}s`
                 : ""
             }`}
@@ -1122,19 +1195,21 @@ export default function VideoPlayer({
           {iframeError && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/85 p-4 text-center text-white">
               <AlertCircle className="h-10 w-10 text-red-400" />
-              <p className="text-sm font-medium">Unable to play this Google Drive video.</p>
+              <p className="text-sm font-medium">
+                Unable to play this Google Drive video.
+              </p>
               <p className="text-xs text-gray-400 max-w-sm mt-1">
-                Please verify that the file sharing permissions on Google Drive are set to &quot;Anyone with the link can view&quot;.
+                Please verify that the file sharing permissions on Google Drive
+                are set to &quot;Anyone with the link can view&quot;.
               </p>
             </div>
           )}
         </div>
       ) : null}
 
-      {/* 4. Native Video Player (Direct, S3, CloudFront, GCS, Azure, CDN, HLS, DASH, and Google Drive Direct Stream) */}
+      {/* 4. Native Video Player (Direct, S3, CloudFront, GCS, Azure, CDN, HLS, DASH, Drive stream) */}
       {isNativeVideo ? (
         <>
-          {/* Informational provider badge for Google Drive stream */}
           {source.type === "google-drive" && !driveDirectStreamFailed && (
             <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1 text-xs text-gray-300 backdrop-blur-sm pointer-events-none border border-white/10">
               <Cloud className="h-3.5 w-3.5 text-blue-400" />
@@ -1177,7 +1252,9 @@ export default function VideoPlayer({
                 error: e,
               });
               if (source.type === "google-drive" && !driveDirectStreamFailed) {
-                console.warn("[VIDEO PLAYER] Google Drive direct stream failed. Falling back to official Drive preview embed.");
+                console.warn(
+                  "[VIDEO PLAYER] Google Drive direct stream failed. Falling back to official Drive preview embed.",
+                );
                 setDriveDirectStreamFailed(true);
                 return;
               }
@@ -1226,7 +1303,6 @@ export default function VideoPlayer({
               showControls ? "opacity-100" : "opacity-0"
             }`}
           >
-            {/* Progress bar slider */}
             <div className="mb-2 flex items-center gap-2">
               <span className="w-12 text-right text-xs text-white/80 tabular-nums">
                 {formatTime(current)}

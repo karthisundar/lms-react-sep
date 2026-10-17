@@ -164,3 +164,41 @@ test('8. Progress tracking 10-second timer simulation', async () => {
   assert(trackingEvents.length > pauseCount, 'Ticks must resume when playback resumes');
   assert(trackingEvents.every((e) => e.position >= 0 && e.position <= videoDuration));
 });
+
+test('9. Immediate pause save triggers within 2-5 seconds without waiting for 10s timer', () => {
+  const savedRequests: Array<{ videoRefId: string; lastWatchedDuration: number; videoDuration: number }> = [];
+  const videoRefId = 'session-video-uuid-1234';
+  const videoDuration = 251;
+  let lastSavedPosition = 0;
+
+  function sendProgress(pos: number, isFinal = false, isPause = false) {
+    const safeDur = Math.max(0, Math.floor(videoDuration));
+    const safePos = Math.min(safeDur, Math.max(0, Math.floor(pos)));
+
+    // On pause or final, never suppress
+    if (!isFinal && !isPause && Math.abs(safePos - lastSavedPosition) < 1 && lastSavedPosition > 0) {
+      return;
+    }
+
+    const payload = {
+      videoRefId,
+      lastWatchedDuration: safePos,
+      videoDuration: safeDur,
+    };
+    savedRequests.push(payload);
+    lastSavedPosition = safePos;
+  }
+
+  // User plays for 3 seconds and pauses (before 10-second timer fires)
+  sendProgress(3.2, false, true); // pause event
+
+  assert.strictEqual(savedRequests.length, 1, 'Pause after 3 seconds must immediately trigger save');
+  assert.strictEqual(savedRequests[0].lastWatchedDuration, 3);
+  assert.strictEqual(savedRequests[0].videoDuration, 251);
+  assert.strictEqual(savedRequests[0].videoRefId, videoRefId);
+
+  // User resumes and pauses again at 5 seconds
+  sendProgress(5.7, false, true); // pause event
+  assert.strictEqual(savedRequests.length, 2, 'Pause after resuming must immediately trigger save');
+  assert.strictEqual(savedRequests[1].lastWatchedDuration, 5);
+});
