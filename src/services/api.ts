@@ -943,14 +943,13 @@ export const videoMasterApi = {
       headers['Authorization'] = rawToken;
     }
 
+    // Strict 3-field payload contract required by LMS video progress API:
+    // Only videoRefId, lastWatchedDuration, videoDuration are allowed.
     const payload: Record<string, unknown> = {
-      videoRefId: body.videoRefId,
-      lastWatchedDuration: Number(body.lastWatchedDuration),
-      videoDuration: Number(body.videoDuration),
+      videoRefId: String(body.videoRefId).trim(),
+      lastWatchedDuration: Math.max(0, Math.floor(Number(body.lastWatchedDuration) || 0)),
+      videoDuration: Math.max(0, Math.floor(Number(body.videoDuration) || 0)),
     };
-    if (typeof body.isCompleted === 'boolean') {
-      payload.isCompleted = body.isCompleted;
-    }
 
     try {
       const response = await request<unknown>(`${VIDEO_MASTER_BASE_URL}/createVideoProgress`, {

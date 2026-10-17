@@ -79,20 +79,17 @@ test('7. Progress API payload validation matches strict 3-field contract', () =>
   const lastWatchedDuration = 120;
   const videoDuration = 600;
 
-  // Function simulating exact payload preparation in VideoPlayer
-  function buildProgressPayload(refId: string, watched: number, dur: number, isFinal = false) {
+  // Function simulating exact payload preparation in VideoPlayer & api.ts
+  function buildProgressPayload(refId: string, watched: number, dur: number) {
     const safeDur = Math.max(0, Math.floor(dur));
     assert(safeDur > 0, 'Duration must be greater than 0');
 
     const safePos = Math.min(safeDur, Math.max(0, Math.floor(watched)));
-    const payload: { videoRefId: string; lastWatchedDuration: number; videoDuration: number; isCompleted?: boolean } = {
+    const payload: { videoRefId: string; lastWatchedDuration: number; videoDuration: number } = {
       videoRefId: String(refId),
       lastWatchedDuration: safePos,
       videoDuration: safeDur,
     };
-    if (isFinal || safePos >= safeDur - 2) {
-      payload.isCompleted = true;
-    }
     return payload;
   }
 
@@ -107,11 +104,7 @@ test('7. Progress API payload validation matches strict 3-field contract', () =>
   assert.strictEqual(payload.lastWatchedDuration, 120);
   assert.strictEqual(payload.videoDuration, 600);
   assert.strictEqual('userId' in payload, false, 'Payload must not contain userId');
-
-  // Completed video
-  const completedPayload = buildProgressPayload(videoRefId, 600, 600, true);
-  assert.strictEqual(completedPayload.isCompleted, true);
-  assert.strictEqual(completedPayload.lastWatchedDuration, 600);
+  assert.strictEqual('isCompleted' in payload, false, 'Payload must not contain isCompleted');
 });
 
 test('8. Progress tracking 10-second timer simulation', async () => {

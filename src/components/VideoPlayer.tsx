@@ -263,6 +263,9 @@ export default function VideoPlayer({
         const vMeta = videoRef.current as unknown as VideoMetaRecord | undefined;
         totalDur = vMeta?.durationSec || vMeta?.duration || 0;
       }
+      if (totalDur <= 0 && savedProgress?.videoDuration) {
+        totalDur = savedProgress.videoDuration;
+      }
 
       const safeDuration = Math.max(0, Math.floor(totalDur));
 
@@ -273,22 +276,19 @@ export default function VideoPlayer({
       }
 
       const safePosition = Math.min(safeDuration, Math.max(0, Math.floor(position)));
-      const isCompleted = isFinal || (safeDuration > 0 && safePosition >= safeDuration - 2);
 
       // Guard: Do not repeatedly send unchanged position if difference is less than 1s (unless marking completion)
       if (!isFinal && Math.abs(safePosition - lastSavedPositionRef.current) < 1 && lastSavedPositionRef.current > 0) {
         return;
       }
 
-      // Exact 3-field payload required by Section 4 (with isCompleted attached if completed)
+      // Exact 3-field payload required by LMS API specification:
+      // Only videoRefId, lastWatchedDuration, and videoDuration are allowed.
       const payload: VideoProgressCreateInput = {
         videoRefId: String(vRefId),
         lastWatchedDuration: safePosition,
         videoDuration: safeDuration,
       };
-      if (isCompleted) {
-        payload.isCompleted = true;
-      }
 
       console.log("[LMS VIDEO: VALIDATION_PASSED]", {
         videoRefId: payload.videoRefId,
@@ -302,7 +302,9 @@ export default function VideoPlayer({
       try {
         console.log("[LMS VIDEO: HTTP_REQUEST_STARTED] POST /api/video/createVideoProgress");
         await videoService.createVideoProgress(payload);
-        lastSavedPositionRef.current = safePosition;
+        if (activeVideoIdRef.current === vRefId) {
+          lastSavedPositionRef.current = safePosition;
+        }
         console.log("[LMS VIDEO: SAVE_SUCCESS] Progress saved to backend", {
           videoRefId: payload.videoRefId,
           savedPosition: safePosition,
@@ -315,15 +317,17 @@ export default function VideoPlayer({
         });
       } finally {
         progressRequestInFlightRef.current = false;
-        // Process queued pending pause position if one arrived while request was in-flight
-        if (pendingPausePositionRef.current !== null) {
+        // Process queued pending pause position if one arrived while request was in-flight and video has not changed
+        if (pendingPausePositionRef.current !== null && activeVideoIdRef.current === vRefId) {
           const nextPos = pendingPausePositionRef.current;
           pendingPausePositionRef.current = null;
           void sendVideoProgress(nextPos, isFinal);
+        } else {
+          pendingPausePositionRef.current = null;
         }
       }
     },
-    [source.type, driveDirectStreamFailed]
+    [source.type, driveDirectStreamFailed, savedProgress?.videoDuration]
   );
 
   // Stop periodic progress tracking timer
@@ -378,6 +382,9 @@ export default function VideoPlayer({
       } else if (htmlVideoRef.current) {
         currentPos = htmlVideoRef.current.currentTime;
       }
+      if ((!Number.isFinite(currentPos) || currentPos <= 0) && latestCurrentTimeRef.current > 0) {
+        currentPos = latestCurrentTimeRef.current;
+      }
 
       if (Number.isFinite(currentPos) && currentPos > 0) {
         console.log("[LMS VIDEO: 10S_TICK]", {
@@ -405,6 +412,9 @@ export default function VideoPlayer({
           }
         } else if (htmlVideoRef.current) {
           pos = htmlVideoRef.current.currentTime;
+        }
+        if ((typeof pos !== "number" || !Number.isFinite(pos) || pos <= 0) && latestCurrentTimeRef.current > 0) {
+          pos = latestCurrentTimeRef.current;
         }
       }
 
