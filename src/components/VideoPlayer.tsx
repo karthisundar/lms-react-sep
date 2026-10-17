@@ -104,15 +104,40 @@ export default function VideoPlayer({
   // Universal Source Detection
   const source = useMemo(() => detectVideoSource(videoUrl), [videoUrl]);
 
-  // Native HTML5 video is used for direct files, cloud storage (S3/GCS/Azure/CDN), HLS, and DASH streams
+  // Google Drive direct stream fallback state
+  const [driveDirectStreamFailed, setDriveDirectStreamFailed] = useState(false);
+
+  useEffect(() => {
+    setDriveDirectStreamFailed(false);
+  }, [videoUrl]);
+
+  // Is this playing as a native HTML5 video?
+  // Native HTML5 is used for direct files, cloud storage (S3/GCS/Azure/CDN), HLS, DASH,
+  // and Google Drive when direct streaming is available.
+  const isDriveNative = source.type === "google-drive" && !driveDirectStreamFailed && !!source.streamUrl;
   const isNativeVideo =
-    source.type === "direct" || source.type === "hls" || source.type === "dash";
+    source.type === "direct" ||
+    source.type === "hls" ||
+    source.type === "dash" ||
+    isDriveNative;
+
+  const resolvedVideoSrc = useMemo(() => {
+    if (source.type === "google-drive") {
+      return source.streamUrl;
+    }
+    if (source.type === "hls") {
+      return undefined;
+    }
+    return source.url || undefined;
+  }, [source]);
 
   // Elements & container refs
   const htmlVideoRef = useRef<HTMLVideoElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<number | null>(null);
+  const videoRef = useRef<Video | null | undefined>(video);
+  videoRef.current = video;
 
   // Playback UI states
   const [playing, setPlaying] = useState(false);
@@ -181,13 +206,17 @@ export default function VideoPlayer({
   const sendVideoProgress = useCallback(
     async (position: number, isFinal = false) => {
       // Do not attempt to save progress if the provider is a third-party sandboxed iframe without playback API
-      if (source.type === "google-drive" || source.type === "vimeo" || source.type === "unknown") {
+      if (
+        (source.type === "google-drive" && driveDirectStreamFailed) ||
+        source.type === "vimeo" ||
+        source.type === "unknown"
+      ) {
         return;
       }
 
-      const vRefId = resolveVideoRefId();
-      if (!vRefId || vRefId !== activeVideoIdRef.current) {
-        console.warn("[LMS VIDEO: SAVE_ABORTED] Missing or stale videoRefId", { vRefId, current: activeVideoIdRef.current });
+      const vRefId = activeVideoIdRef.current;
+      if (!vRefId) {
+        console.warn("[LMS VIDEO: SAVE_ABORTED] Missing or stale videoRefId", { vRefId });
         return;
       }
 
@@ -224,8 +253,11 @@ export default function VideoPlayer({
         if (typeof d === "number" && Number.isFinite(d) && d > 0) totalDur = d;
       }
       if (totalDur <= 0) {
-        const vMeta = video as unknown as VideoMetaRecord | undefined;
-        totalDur = duration || vMeta?.durationSec || vMeta?.duration || 0;
+        totalDur = latestDurationRef.current;
+      }
+      if (totalDur <= 0) {
+        const vMeta = videoRef.current as unknown as VideoMetaRecord | undefined;
+        totalDur = vMeta?.durationSec || vMeta?.duration || 0;
       }
 
       const safeDuration = Math.max(0, Math.floor(totalDur));
@@ -286,7 +318,7 @@ export default function VideoPlayer({
         }
       }
     },
-    [source.type, resolveVideoRefId, duration, video]
+    [source.type, driveDirectStreamFailed]
   );
 
   // Stop periodic progress tracking timer
@@ -298,12 +330,19 @@ export default function VideoPlayer({
     }
   }, []);
 
+  const sendVideoProgressRef = useRef(sendVideoProgress);
+  sendVideoProgressRef.current = sendVideoProgress;
+
   // Start periodic 10-second progress tracking timer (only during active playback)
   const startProgressTracking = useCallback(() => {
     stopProgressTracking();
 
-    // Google Drive and unsupported iframes do not expose real-time playback
-    if (source.type === "google-drive" || source.type === "vimeo" || source.type === "unknown") {
+    // Sandboxed iframes without playback API do not expose real-time playback
+    if (
+      (source.type === "google-drive" && driveDirectStreamFailed) ||
+      source.type === "vimeo" ||
+      source.type === "unknown"
+    ) {
       return;
     }
 
@@ -311,7 +350,14 @@ export default function VideoPlayer({
 
     // Standard LMS interval: save progress every 10 seconds of active playback
     progressTimerRef.current = setInterval(() => {
-      if (!isPlayingRef.current) {
+      let isStillPlaying = isPlayingRef.current;
+      if (htmlVideoRef.current) {
+        if (htmlVideoRef.current.paused || htmlVideoRef.current.ended) {
+          isStillPlaying = false;
+        }
+      }
+
+      if (!isStillPlaying) {
         stopProgressTracking();
         return;
       }
@@ -325,10 +371,6 @@ export default function VideoPlayer({
           // Ignore error reading position from YouTube API
         }
       } else if (htmlVideoRef.current) {
-        if (htmlVideoRef.current.paused || htmlVideoRef.current.ended) {
-          stopProgressTracking();
-          return;
-        }
         currentPos = htmlVideoRef.current.currentTime;
       }
 
@@ -337,10 +379,10 @@ export default function VideoPlayer({
           videoRefId: activeVideoIdRef.current,
           currentPosition: Math.floor(currentPos),
         });
-        void sendVideoProgress(currentPos, false);
+        void sendVideoProgressRef.current(currentPos, false);
       }
     }, 10000);
-  }, [source.type, stopProgressTracking, sendVideoProgress]);
+  }, [source.type, driveDirectStreamFailed, stopProgressTracking]);
 
   // Pause flush: stops timer and immediately saves current position
   const saveProgressOnPause = useCallback(
@@ -366,11 +408,17 @@ export default function VideoPlayer({
           videoRefId: activeVideoIdRef.current,
           pausePosition: Math.floor(pos),
         });
-        await sendVideoProgress(pos, false);
+        await sendVideoProgressRef.current(pos, false);
       }
     },
-    [source.type, sendVideoProgress]
+    [source.type]
   );
+
+  const saveProgressOnPauseRef = useRef(saveProgressOnPause);
+  saveProgressOnPauseRef.current = saveProgressOnPause;
+
+  const stopProgressTrackingRef = useRef(stopProgressTracking);
+  stopProgressTrackingRef.current = stopProgressTracking;
 
   // Play handler
   const handlePlay = useCallback(() => {
@@ -621,13 +669,13 @@ export default function VideoPlayer({
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden" && isPlayingRef.current) {
-        void saveProgressOnPause();
+        void saveProgressOnPauseRef.current?.();
       }
     };
 
     const handleBeforeUnload = () => {
       if (isPlayingRef.current) {
-        void saveProgressOnPause();
+        void saveProgressOnPauseRef.current?.();
       }
     };
 
@@ -637,14 +685,14 @@ export default function VideoPlayer({
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      stopProgressTracking();
+      stopProgressTrackingRef.current?.();
       if (isPlayingRef.current) {
-        void saveProgressOnPause();
+        void saveProgressOnPauseRef.current?.();
       }
       progressRequestInFlightRef.current = false;
       isPlayingRef.current = false;
     };
-  }, [saveProgressOnPause, stopProgressTracking]);
+  }, []);
 
   // Log unsupported sources without exposing sensitive tokens
   useEffect(() => {
@@ -1005,8 +1053,8 @@ export default function VideoPlayer({
         </>
       ) : null}
 
-      {/* 3. Google Drive Player (Plays via official Google Drive preview embed) */}
-      {source.type === "google-drive" && source.videoId ? (
+      {/* 3. Google Drive Fallback Player (Plays via official Google Drive preview embed when direct stream is unavailable) */}
+      {source.type === "google-drive" && (driveDirectStreamFailed || !source.streamUrl) && source.videoId ? (
         <div className="relative h-full w-full bg-black">
           {/* Informational provider badge */}
           <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1 text-xs text-gray-300 backdrop-blur-sm pointer-events-none border border-white/10">
@@ -1053,12 +1101,20 @@ export default function VideoPlayer({
         </div>
       ) : null}
 
-      {/* 4. Native Video Player (Direct, S3, CloudFront, GCS, Azure, CDN, HLS, DASH) */}
+      {/* 4. Native Video Player (Direct, S3, CloudFront, GCS, Azure, CDN, HLS, DASH, and Google Drive Direct Stream) */}
       {isNativeVideo ? (
         <>
+          {/* Informational provider badge for Google Drive stream */}
+          {source.type === "google-drive" && !driveDirectStreamFailed && (
+            <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1 text-xs text-gray-300 backdrop-blur-sm pointer-events-none border border-white/10">
+              <Cloud className="h-3.5 w-3.5 text-blue-400" />
+              <span>Google Drive Stream</span>
+            </div>
+          )}
+
           <video
             ref={htmlVideoRef}
-            src={source.type === "hls" ? undefined : source.url}
+            src={source.type === "hls" ? undefined : resolvedVideoSrc}
             poster={poster}
             playsInline
             controls={false}
@@ -1087,9 +1143,14 @@ export default function VideoPlayer({
             onError={(e) => {
               console.error("[VIDEO PLAYER] Native playback error:", {
                 sourceType: source.type,
-                url: sanitizeVideoUrlForLogging(videoUrl),
+                url: sanitizeVideoUrlForLogging(resolvedVideoSrc || videoUrl),
                 error: e,
               });
+              if (source.type === "google-drive" && !driveDirectStreamFailed) {
+                console.warn("[VIDEO PLAYER] Google Drive direct stream failed. Falling back to official Drive preview embed.");
+                setDriveDirectStreamFailed(true);
+                return;
+              }
               setError("Unable to play this video.");
               setLoading(false);
               setPlaying(false);

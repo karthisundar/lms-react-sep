@@ -17,6 +17,7 @@ export interface DetectedVideoSource {
   url: string;
   videoId?: string;
   previewUrl?: string;
+  streamUrl?: string;
 }
 
 // Backward compatibility alias
@@ -316,6 +317,7 @@ export function detectVideoSource(
       url,
       videoId: driveId,
       previewUrl: `https://drive.google.com/file/d/${driveId}/preview`,
+      streamUrl: `https://drive.usercontent.google.com/download?id=${driveId}&export=download`,
     };
   }
 
