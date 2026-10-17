@@ -211,6 +211,10 @@ export default function VideoPlayer({
         source.type === "vimeo" ||
         source.type === "unknown"
       ) {
+        console.info("[LMS VIDEO: SAVE_SKIPPED] Sandboxed cross-origin provider does not expose playback events (Same-Origin Policy limitation).", {
+          sourceType: source.type,
+          videoRefId: activeVideoIdRef.current,
+        });
         return;
       }
 
@@ -286,19 +290,20 @@ export default function VideoPlayer({
         payload.isCompleted = true;
       }
 
-      progressRequestInFlightRef.current = true;
-      console.log("[LMS VIDEO: SAVE_ATTEMPT]", {
+      console.log("[LMS VIDEO: VALIDATION_PASSED]", {
         videoRefId: payload.videoRefId,
         lastWatchedDuration: payload.lastWatchedDuration,
         videoDuration: payload.videoDuration,
-        isCompleted: payload.isCompleted,
-        sourceType: source.type,
       });
 
+      console.log("[LMS VIDEO: API_INVOKED] videoService.createVideoProgress called with payload:", payload);
+      progressRequestInFlightRef.current = true;
+
       try {
+        console.log("[LMS VIDEO: HTTP_REQUEST_STARTED] POST /api/video/createVideoProgress");
         await videoService.createVideoProgress(payload);
         lastSavedPositionRef.current = safePosition;
-        console.log("[LMS VIDEO: SAVE_SUCCESS]", {
+        console.log("[LMS VIDEO: SAVE_SUCCESS] Progress saved to backend", {
           videoRefId: payload.videoRefId,
           savedPosition: safePosition,
           duration: safeDuration,
@@ -578,14 +583,19 @@ export default function VideoPlayer({
     }
 
     // 3. Google Drive / Other Embeds:
-    // Google Drive's sandboxed preview iframe does not expose an external seek API.
-    // Mark resume evaluated so we don't block subsequent operations.
+    // Google Drive's sandboxed preview iframe does not expose an external JavaScript seek API.
+    // Instead, start-time resume is passed directly in the iframe src URL query parameter '?t=...s'.
     if (source.type === "google-drive") {
       console.log("[LMS VIDEO: GOOGLE_DRIVE_NOTICE]", {
         videoRefId: activeVideoIdRef.current,
-        note: "Google Drive sandboxed preview iframe does not expose an external seek API. Automated seeking is unavailable for sandboxed Drive embeds.",
+        note: "Google Drive sandboxed preview iframe does not expose an external JavaScript seek API. Start position is applied via iframe URL parameter '?t=...s'.",
+        startPosition: savedPos,
       });
       resumeAppliedRef.current = true;
+      if (savedPos > 0) {
+        setResumeToast(savedPos);
+        setTimeout(() => setResumeToast(null), 3500);
+      }
     }
   }, [source.type]);
 
@@ -835,6 +845,11 @@ export default function VideoPlayer({
     setDuration(totalDuration);
     latestDurationRef.current = totalDuration;
     setLoading(false);
+    console.log("[LMS VIDEO: PLAYER_READY]", {
+      videoRefId: activeVideoIdRef.current,
+      duration: totalDuration,
+      sourceType: source.type,
+    });
     applyResumePosition();
   };
 
@@ -1067,14 +1082,19 @@ export default function VideoPlayer({
             <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5 rounded-md bg-black/75 px-3 py-1.5 text-xs text-amber-200 backdrop-blur-sm border border-amber-500/30">
               <RotateCcw className="h-3.5 w-3.5 text-amber-400" />
               <span>
-                Last watched: <strong>{formatTime(savedProgress.lastWatchedDuration)}</strong> (scrub player controls manually)
+                Resumed from: <strong>{formatTime(savedProgress.lastWatchedDuration)}</strong>
               </span>
             </div>
           )}
 
           <iframe
             ref={iframeRef}
-            src={`https://drive.google.com/file/d/${source.videoId}/preview`}
+            key={`${source.videoId}-${savedProgress?.lastWatchedDuration || 0}`}
+            src={`https://drive.google.com/file/d/${source.videoId}/preview${
+              savedProgress && !savedProgress.isCompleted && savedProgress.lastWatchedDuration > 0
+                ? `?t=${Math.floor(savedProgress.lastWatchedDuration)}s`
+                : ""
+            }`}
             title={displayTitle}
             className="h-full w-full border-0 block"
             allow="autoplay; fullscreen; picture-in-picture"
