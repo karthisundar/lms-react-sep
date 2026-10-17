@@ -317,10 +317,10 @@ export const api = {
       isDemoMode ? demoApi.lessonNotes.list(params) : lessonNotesApi.getAllLessonNotes(params),
     getLessonNotes: (lessonNotesRefId: string): Promise<LessonNotes> =>
       isDemoMode ? demoApi.lessonNotes.get(lessonNotesRefId) : lessonNotesApi.getLessonNotes(lessonNotesRefId),
-    createLessonNotes: (body: LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
-      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
-    updateLessonNotes: (body: LessonNotesUpdateInput): Promise<LessonNotes> =>
-      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    createLessonNotes: (body: FormData | LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body as any) : lessonNotesApi.createLessonNotes(body),
+    updateLessonNotes: (body: FormData | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body as any) : lessonNotesApi.createLessonNotes(body),
     deleteLessonNotes: (payload: LessonNotesDeleteInput | string): Promise<void> =>
       isDemoMode
         ? demoApi.lessonNotes.remove(typeof payload === 'string' ? payload : payload.lessonNotesRefId)
@@ -329,10 +329,10 @@ export const api = {
       isDemoMode ? demoApi.lessonNotes.list(params) : lessonNotesApi.getAllLessonNotes(params),
     get: (lessonNotesRefId: string): Promise<LessonNotes> =>
       isDemoMode ? demoApi.lessonNotes.get(lessonNotesRefId) : lessonNotesApi.getLessonNotes(lessonNotesRefId),
-    create: (body: LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
-      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
-    update: (body: LessonNotesUpdateInput): Promise<LessonNotes> =>
-      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    create: (body: FormData | LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body as any) : lessonNotesApi.createLessonNotes(body),
+    update: (body: FormData | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body as any) : lessonNotesApi.createLessonNotes(body),
     remove: (payload: LessonNotesDeleteInput | string): Promise<void> =>
       isDemoMode
         ? demoApi.lessonNotes.remove(typeof payload === 'string' ? payload : payload.lessonNotesRefId)
@@ -344,10 +344,10 @@ export const api = {
       isDemoMode ? demoApi.lessonNotes.list(params) : lessonNotesApi.getAllLessonNotes(params),
     getLessonNotes: (lessonNotesRefId: string): Promise<LessonNotes> =>
       isDemoMode ? demoApi.lessonNotes.get(lessonNotesRefId) : lessonNotesApi.getLessonNotes(lessonNotesRefId),
-    createLessonNotes: (body: LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
-      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
-    updateLessonNotes: (body: LessonNotesUpdateInput): Promise<LessonNotes> =>
-      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
+    createLessonNotes: (body: FormData | LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body as any) : lessonNotesApi.createLessonNotes(body),
+    updateLessonNotes: (body: FormData | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body as any) : lessonNotesApi.createLessonNotes(body),
     deleteLessonNotes: (payload: LessonNotesDeleteInput | string): Promise<void> =>
       isDemoMode
         ? demoApi.lessonNotes.remove(typeof payload === 'string' ? payload : payload.lessonNotesRefId)
@@ -356,12 +356,12 @@ export const api = {
       isDemoMode ? demoApi.lessonNotes.list(params) : lessonNotesApi.getAllLessonNotes(params),
     get: (id: string): Promise<LessonNotes> =>
       isDemoMode ? demoApi.lessonNotes.get(id) : lessonNotesApi.getLessonNotes(id),
-    create: (body: LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
-      isDemoMode ? demoApi.lessonNotes.create(body) : lessonNotesApi.createLessonNotes(body),
-    update: (id: string, body: LessonNotesUpdateInput): Promise<LessonNotes> =>
+    create: (body: FormData | LessonNotesCreateInput | LessonNotesUpdateInput): Promise<LessonNotes> =>
+      isDemoMode ? demoApi.lessonNotes.create(body as any) : lessonNotesApi.createLessonNotes(body),
+    update: (id: string, body: FormData | LessonNotesUpdateInput): Promise<LessonNotes> =>
       isDemoMode
-        ? demoApi.lessonNotes.create({ ...body, lessonNotesRefId: id })
-        : lessonNotesApi.createLessonNotes({ ...body, lessonNotesRefId: id }),
+        ? demoApi.lessonNotes.create(body instanceof FormData ? body as any : { ...body, lessonNotesRefId: id })
+        : lessonNotesApi.update(id, body),
     remove: (id: string): Promise<void> =>
       isDemoMode
         ? demoApi.lessonNotes.remove(id)

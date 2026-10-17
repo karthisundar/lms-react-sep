@@ -144,7 +144,7 @@ export function getYouTubeVideoId(rawUrl?: string | null): string | null {
     if (vMatch) return vMatch[1];
   } catch {
     // Fallback regex
-    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([^"&?/\s]{11})/i;
+    const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([^"&?/\s]{11})/i;
     const match = trimmed.match(regex);
     if (match && match[1] && /^[a-zA-Z0-9_-]{11}$/.test(match[1])) {
       return match[1];
@@ -370,7 +370,11 @@ export function detectVideoSource(
     hostname.endsWith('.amazonaws.com') ||
     hostname.endsWith('.cloudfront.net') ||
     hostname.includes('s3') ||
-    hostname.includes('cdn');
+    hostname.includes('cdn') ||
+    hostname.includes('storage.googleapis.com') ||
+    hostname.endsWith('.core.windows.net') ||
+    hostname.includes('digitaloceanspaces.com') ||
+    hostname.includes('supabase.co');
 
   if (isS3OrCloudFrontOrCdn) {
     return { type: 'direct', url };

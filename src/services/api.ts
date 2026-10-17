@@ -2200,27 +2200,28 @@ export const lessonNotesApi = {
         lessonNotesRefId: lessonNotesRefId ? String(lessonNotesRefId) : undefined,
       };
     } else {
-      const isEdit = Boolean(body.lessonNotesRefId && String(body.lessonNotesRefId).trim());
+      const jsonBody = body as LessonNotesCreateInput | LessonNotesUpdateInput;
+      const isEdit = Boolean(jsonBody.lessonNotesRefId && String(jsonBody.lessonNotesRefId).trim());
       fallbackRaw = {
-        lessonId: body.lessonId,
-        title: (body.title ?? '').trim(),
-        content: (body.content ?? '').trim(),
-        status: body.status !== undefined && body.status !== null ? body.status : 1,
+        lessonId: jsonBody.lessonId,
+        title: (jsonBody.title ?? '').trim(),
+        content: (jsonBody.content ?? '').trim(),
+        status: jsonBody.status !== undefined && jsonBody.status !== null ? jsonBody.status : 1,
       };
       if (isEdit) {
-        fallbackRaw.lessonNotesRefId = body.lessonNotesRefId;
+        fallbackRaw.lessonNotesRefId = jsonBody.lessonNotesRefId;
       }
 
-      if (body.file) {
+      if (jsonBody.file) {
         const fd = new FormData();
-        fd.append('title', (body.title ?? '').trim());
-        fd.append('content', (body.content ?? '').trim());
-        fd.append('lessonId', String(body.lessonId));
-        fd.append('status', String(body.status !== undefined && body.status !== null ? body.status : 1));
-        if (isEdit && body.lessonNotesRefId) {
-          fd.append('lessonNotesRefId', body.lessonNotesRefId);
+        fd.append('title', (jsonBody.title ?? '').trim());
+        fd.append('content', (jsonBody.content ?? '').trim());
+        fd.append('lessonId', String(jsonBody.lessonId));
+        fd.append('status', String(jsonBody.status !== undefined && jsonBody.status !== null ? jsonBody.status : 1));
+        if (isEdit && jsonBody.lessonNotesRefId) {
+          fd.append('lessonNotesRefId', jsonBody.lessonNotesRefId);
         }
-        fd.append('file', body.file);
+        fd.append('file', jsonBody.file);
         requestBody = fd;
       } else {
         requestBody = JSON.stringify(fallbackRaw);
@@ -2263,20 +2264,26 @@ export const lessonNotesApi = {
   // Aliases conforming to standard CRUD naming
   list: (params: ListParams = {}) => lessonNotesApi.getAllLessonNotes(params),
   get: (lessonNotesRefId: string) => lessonNotesApi.getLessonNotes(lessonNotesRefId),
-  create: (body: LessonNotesCreateInput | LessonNotesUpdateInput) =>
+  create: (body: LessonNotesCreateInput | LessonNotesUpdateInput | FormData) =>
     lessonNotesApi.createLessonNotes(body),
   update: (
-    idOrBody: string | LessonNotesUpdateInput,
-    body?: LessonNotesUpdateInput
+    idOrBody: string | LessonNotesUpdateInput | FormData,
+    body?: LessonNotesUpdateInput | FormData
   ) => {
     if (typeof idOrBody === 'string') {
+      if (typeof FormData !== 'undefined' && body instanceof FormData) {
+        if (!body.get('lessonNotesRefId')) {
+          body.append('lessonNotesRefId', idOrBody);
+        }
+        return lessonNotesApi.createLessonNotes(body);
+      }
       return lessonNotesApi.createLessonNotes({
         ...(body || {}),
         lessonNotesRefId: idOrBody,
-        lessonId: body?.lessonId ?? '',
-        title: body?.title ?? '',
-        content: body?.content ?? '',
-        status: body?.status ?? 1,
+        lessonId: (body as LessonNotesUpdateInput)?.lessonId ?? '',
+        title: (body as LessonNotesUpdateInput)?.title ?? '',
+        content: (body as LessonNotesUpdateInput)?.content ?? '',
+        status: (body as LessonNotesUpdateInput)?.status ?? 1,
       });
     }
     return lessonNotesApi.createLessonNotes(idOrBody);

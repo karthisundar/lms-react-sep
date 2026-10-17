@@ -10,33 +10,15 @@ import {
   RotateCw,
   Loader as Loader2,
   CircleAlert as AlertCircle,
+  Cloud,
 } from "lucide-react";
-import type { Video, VideoProgress } from "@/types/api";
-import { useAuth } from "@/context/AuthContext";
+import type { Video, VideoProgress, VideoProgressCreateInput } from "@/types/api";
 import { videoService } from "@/services";
 import {
   detectVideoSource,
-  getYouTubeVideoId,
   getYouTubeEmbedUrl,
-  getVideoProvider,
-  getGoogleDriveFileId,
-  getVimeoVideoId,
   sanitizeVideoUrlForLogging,
-  type DetectedVideoSource,
-  type VideoSourceType,
 } from "@/utils/videoUtils";
-
-export {
-  detectVideoSource,
-  getYouTubeVideoId,
-  getYouTubeEmbedUrl,
-  getVideoProvider,
-  getGoogleDriveFileId,
-  getVimeoVideoId,
-  sanitizeVideoUrlForLogging,
-  type DetectedVideoSource,
-  type VideoSourceType,
-};
 
 export interface VideoPlayerProps {
   video?: Video | null;
@@ -53,6 +35,54 @@ export interface PlayableVideo {
   ended: boolean;
 }
 
+interface VideoMetaRecord {
+  videoRefId?: string;
+  video_ref_id?: string;
+  id?: string;
+  videoId?: string | number;
+  video_id?: string | number;
+  refId?: string;
+  uuid?: string;
+  durationSec?: number;
+  duration?: number;
+  last_watched_duration?: number | string;
+}
+
+interface YouTubePlayerInstance {
+  seekTo?: (seconds: number, allowSeekAhead?: boolean) => void;
+  getCurrentTime?: () => number;
+  getDuration?: () => number;
+  destroy?: () => void;
+}
+
+interface YouTubePlayerEvent {
+  target: YouTubePlayerInstance;
+  data?: number;
+}
+
+interface YouTubeWindow extends Window {
+  YT?: {
+    Player: new (
+      element: HTMLElement | string,
+      options: {
+        events?: {
+          onReady?: (event: YouTubePlayerEvent) => void;
+          onStateChange?: (event: YouTubePlayerEvent) => void;
+        };
+      }
+    ) => YouTubePlayerInstance;
+  };
+  onYouTubeIframeAPIReady?: () => void;
+  Hls?: {
+    isSupported: () => boolean;
+    new (config?: { enableWorker?: boolean }): {
+      loadSource: (src: string) => void;
+      attachMedia: (video: HTMLVideoElement) => void;
+      destroy: () => void;
+    };
+  };
+}
+
 function formatTime(s: number): string {
   if (!isFinite(s) || s < 0) return "0:00";
   const m = Math.floor(s / 60);
@@ -67,37 +97,22 @@ export default function VideoPlayer({
   poster,
   title,
 }: VideoPlayerProps) {
-  // Resolve video URL and title
+  // 1. Resolve video URL, title, and reference ID
   const videoUrl = (video?.url || video?.signedUrl || src || "").trim();
   const displayTitle = title || video?.title || "Video Player";
 
-  // 1. Universal Source Detection
+  // Universal Source Detection
   const source = useMemo(() => detectVideoSource(videoUrl), [videoUrl]);
-  console.log("[VIDEO PLAYER] videoUrl:", JSON.stringify(videoUrl), "source:", source);
 
-  // Native HTML5 video is for direct, HLS, and DASH streams
+  // Native HTML5 video is used for direct files, cloud storage (S3/GCS/Azure/CDN), HLS, and DASH streams
   const isNativeVideo =
     source.type === "direct" || source.type === "hls" || source.type === "dash";
 
-  // State for Iframe / embed errors
-  const [iframeError, setIframeError] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-
-  // YouTube IFrame API adapter refs (PRESERVED UNCHANGED)
-  const ytPlayerRef = useRef<any>(null);
-  const ytTimeRef = useRef<number>(0);
-  const ytDurationRef = useRef<number>(0);
-  const isYtPlayingRef = useRef<boolean>(false);
-
-  // Google Drive player adapter refs
-  const driveTimeRef = useRef<number>(0);
-  const isDrivePlayingRef = useRef<boolean>(false);
-  const isDriveEndedRef = useRef<boolean>(false);
-
-  // Single Progress Controller with Refs
-  const videoRef = useRef<PlayableVideo | null>(null);
+  // Elements & container refs
   const htmlVideoRef = useRef<HTMLVideoElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const hideTimer = useRef<number | null>(null);
 
   // Playback UI states
   const [playing, setPlaying] = useState(false);
@@ -108,568 +123,425 @@ export default function VideoPlayer({
   const [fullscreen, setFullscreen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [iframeError, setIframeError] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const hideTimer = useRef<number | null>(null);
+  const [resumeToast, setResumeToast] = useState<number | null>(null);
 
-  // User auth context
-  const { user } = useAuth();
+  // Authoritative videoRefId extraction
   const currentVideoRefId = useMemo(() => {
+    const vMeta = video as unknown as VideoMetaRecord | undefined;
     const raw =
       video?.videoRefId ||
-      (video as any)?.video_ref_id ||
+      vMeta?.video_ref_id ||
       video?.id ||
-      ((video as any)?.videoId ? String((video as any).videoId) : null) ||
-      ((video as any)?.video_id ? String((video as any).video_id) : null) ||
-      (video as any)?.refId ||
-      (video as any)?.uuid ||
+      (vMeta?.videoId ? String(vMeta.videoId) : null) ||
+      (vMeta?.video_id ? String(vMeta.video_id) : null) ||
+      vMeta?.refId ||
+      vMeta?.uuid ||
       null;
     return raw ? String(raw).trim() : null;
   }, [video]);
 
-  // Video progress state and tracking refs
+  // Authoritative progress tracking & resume refs
   const [savedProgress, setSavedProgress] = useState<VideoProgress | null>(null);
   const isPlayingRef = useRef<boolean>(false);
   const latestCurrentTimeRef = useRef<number>(0);
   const latestDurationRef = useRef<number>(0);
-
-  // Single authoritative progress controller refs
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressRequestInFlightRef = useRef<boolean>(false);
   const pendingPausePositionRef = useRef<number | null>(null);
   const lastSavedPositionRef = useRef<number>(0);
-  const lastCheckedPositionRef = useRef<number>(0);
-  const prevTickPositionRef = useRef<number>(0);
   const finalProgressSentRef = useRef<boolean>(false);
-  const currentVideoRef = useRef<string | null>(currentVideoRefId);
   const prevVideoKeyRef = useRef<string | null>(null);
 
-  // Resume tracking refs
+  // Resume refs
   const resumePositionRef = useRef<number | null>(null);
   const resumeAppliedRef = useRef<boolean>(false);
   const isCompletedRef = useRef<boolean>(false);
 
-  // Keep currentVideoRef in sync on every render
-  currentVideoRef.current = currentVideoRefId;
+  // YouTube IFrame API adapter refs
+  const ytPlayerRef = useRef<YouTubePlayerInstance | null>(null);
+  const ytDurationRef = useRef<number>(0);
 
-  // Resolve video reference ID with all possible fallbacks
+  // Synchronize playing ref
+  useEffect(() => {
+    isPlayingRef.current = playing;
+  }, [playing]);
+
+  // Active video reference ref to prevent cross-video progress saving
+  const activeVideoIdRef = useRef<string | null>(currentVideoRefId);
+  activeVideoIdRef.current = currentVideoRefId;
+
+  // Resolve video reference ID
   const resolveVideoRefId = useCallback((): string | null => {
-    const raw =
-      currentVideoRef.current ||
-      currentVideoRefId ||
-      video?.videoRefId ||
-      (video as any)?.video_ref_id ||
-      video?.id ||
-      (video as any)?.videoId ||
-      (video as any)?.video_id ||
-      (video as any)?.refId ||
-      (video as any)?.uuid;
-    return raw ? String(raw).trim() : null;
-  }, [currentVideoRefId, video]);
+    return activeVideoIdRef.current || currentVideoRefId;
+  }, [currentVideoRefId]);
 
-  // Dedicated function: immediately saves position when user presses Pause
-  const saveProgressOnPause = useCallback(
-    async (explicitPosition?: number) => {
-      console.log("[VIDEO PROGRESS] PAUSE SAVE START");
-
-      const videoEl = htmlVideoRef.current || videoRef.current;
-      if (!videoEl) {
-        if (source.type === "google-drive") {
-          console.log("[GOOGLE DRIVE] VIDEO ELEMENT NOT FOUND");
-        }
-        console.error("[VIDEO PROGRESS] PAUSE: VIDEO NOT FOUND");
-        return;
-      }
-
-      // If video has ended, completion handler is authoritative
-      if (videoEl.ended || finalProgressSentRef.current) {
-        return;
-      }
-
-      const rawTime =
-        typeof explicitPosition === "number"
-          ? explicitPosition
-          : videoEl.currentTime;
-
-      if (!Number.isFinite(rawTime) || rawTime < 0) {
-        return;
-      }
-
-      const currentPosition = Math.floor(rawTime);
-      console.log(`[VIDEO PROGRESS] PAUSE POSITION: ${currentPosition}`);
-      if (source.type === "google-drive") {
-        console.log("[GOOGLE DRIVE] CURRENT TIME", currentPosition);
-      }
-
-      const videoRefId = resolveVideoRefId();
-      if (!videoRefId) {
-        console.error("[VIDEO PROGRESS] PAUSE: VIDEO REF ID MISSING");
-        return;
-      }
-
-      // If a request is already running, queue this latest pause position so pause always wins
-      if (progressRequestInFlightRef.current) {
-        console.log(
-          "[VIDEO PROGRESS] PAUSE: REQUEST ALREADY RUNNING, QUEUEING PAUSE POSITION",
-          currentPosition,
-        );
-        pendingPausePositionRef.current = currentPosition;
-        return;
-      }
-
-      const totalDur = Math.floor(
-        videoEl && Number.isFinite(videoEl.duration) && videoEl.duration > 0
-          ? videoEl.duration
-          : duration ||
-              (video as any)?.durationSec ||
-              (video as any)?.duration ||
-              0,
-      );
-
-      const payload = {
-        videoRefId: String(videoRefId),
-        lastWatchedDuration: currentPosition,
-        videoDuration: totalDur,
-        isCompleted: totalDur > 0 && currentPosition >= totalDur,
-      };
-
-      progressRequestInFlightRef.current = true;
-      console.log("[VIDEO PROGRESS] PAUSE API CALL", payload);
-      if (source.type === "google-drive") {
-        console.log("[GOOGLE DRIVE] API CALL", payload);
-      }
-
-      try {
-        await videoService.createVideoProgress(payload);
-        lastSavedPositionRef.current = currentPosition;
-        lastCheckedPositionRef.current = currentPosition;
-        prevTickPositionRef.current = currentPosition;
-        if (source.type === "google-drive") {
-          console.log("[GOOGLE DRIVE] API SUCCESS", currentPosition);
-        }
-        console.log(`[VIDEO PROGRESS] PAUSE API SUCCESS: ${currentPosition}`);
-      } catch (error) {
-        if (source.type === "google-drive") {
-          console.error("[GOOGLE DRIVE] API ERROR", error);
-        }
-        console.error("[VIDEO PROGRESS] PAUSE API ERROR", error);
-      } finally {
-        progressRequestInFlightRef.current = false;
-        if (pendingPausePositionRef.current !== null) {
-          const nextPos = pendingPausePositionRef.current;
-          pendingPausePositionRef.current = null;
-          void saveProgressOnPause(nextPos);
-        }
-      }
-    },
-    [source.type, resolveVideoRefId, duration, video],
-  );
-
-  // Single central function responsible for createVideoProgress API call
+  // Central progress saving API caller
   const sendVideoProgress = useCallback(
     async (position: number, isFinal = false) => {
+      // Do not attempt to save progress if the provider is a third-party sandboxed iframe without playback API
+      if (source.type === "google-drive" || source.type === "vimeo" || source.type === "unknown") {
+        return;
+      }
+
+      const vRefId = resolveVideoRefId();
+      if (!vRefId || vRefId !== activeVideoIdRef.current) {
+        console.warn("[LMS VIDEO: SAVE_ABORTED] Missing or stale videoRefId", { vRefId, current: activeVideoIdRef.current });
+        return;
+      }
+
+      // Guard: Do not overwrite a valid saved position with 0 during initial video loading
+      if (
+        !isFinal &&
+        !resumeAppliedRef.current &&
+        resumePositionRef.current !== null &&
+        resumePositionRef.current > 0 &&
+        position === 0
+      ) {
+        console.log("[LMS VIDEO: SAVE_SUPPRESSED] Suppressed zero overwrite while initial resume is pending");
+        return;
+      }
+
+      // Guard: Avoid overlapping API requests
       if (progressRequestInFlightRef.current) {
+        console.log("[LMS VIDEO: QUEUED] Request already in flight, queueing position:", position);
+        pendingPausePositionRef.current = position;
         return;
       }
 
-      const videoRefId = resolveVideoRefId();
-      if (!videoRefId) {
-        console.warn("[VIDEO PROGRESS] Missing videoRefId");
+      // Determine accurate total duration
+      let totalDur = 0;
+      if (source.type === "youtube" && ytPlayerRef.current) {
+        try {
+          const d = ytPlayerRef.current.getDuration?.();
+          if (typeof d === "number" && Number.isFinite(d) && d > 0) totalDur = d;
+        } catch {
+          // Ignore error reading duration from YouTube API
+        }
+      } else if (htmlVideoRef.current) {
+        const d = htmlVideoRef.current.duration;
+        if (typeof d === "number" && Number.isFinite(d) && d > 0) totalDur = d;
+      }
+      if (totalDur <= 0) {
+        const vMeta = video as unknown as VideoMetaRecord | undefined;
+        totalDur = duration || vMeta?.durationSec || vMeta?.duration || 0;
+      }
+
+      const safeDuration = Math.max(0, Math.floor(totalDur));
+
+      // CRITICAL REQUIREMENT: Never send videoDuration: 0 when duration has not loaded yet
+      if (!safeDuration || safeDuration <= 0) {
+        console.warn("[LMS VIDEO: SAVE_ABORTED] Video duration metadata is not yet available. Suppressing save.");
         return;
       }
 
-      const videoEl = htmlVideoRef.current || videoRef.current;
-      const totalDur = Math.floor(
-        videoEl && Number.isFinite(videoEl.duration) && videoEl.duration > 0
-          ? videoEl.duration
-          : duration ||
-              (video as any)?.durationSec ||
-              (video as any)?.duration ||
-              0,
-      );
+      const safePosition = Math.min(safeDuration, Math.max(0, Math.floor(position)));
+      const isCompleted = isFinal || (safeDuration > 0 && safePosition >= safeDuration - 2);
 
-      const safePosition = Math.max(0, Math.floor(position));
-      const payload = {
-        videoRefId: String(videoRefId),
+      // Guard: Do not repeatedly send unchanged position if difference is less than 1s (unless marking completion)
+      if (!isFinal && Math.abs(safePosition - lastSavedPositionRef.current) < 1 && lastSavedPositionRef.current > 0) {
+        return;
+      }
+
+      // Exact 3-field payload required by Section 4 (with isCompleted attached if completed)
+      const payload: VideoProgressCreateInput = {
+        videoRefId: String(vRefId),
         lastWatchedDuration: safePosition,
-        videoDuration: totalDur,
-        isCompleted: isFinal || (totalDur > 0 && safePosition >= totalDur),
+        videoDuration: safeDuration,
       };
+      if (isCompleted) {
+        payload.isCompleted = true;
+      }
 
       progressRequestInFlightRef.current = true;
-      console.log("[VIDEO PROGRESS] API CALL", payload);
-      if (source.type === "google-drive") {
-        console.log("[GOOGLE DRIVE] API CALL", payload);
-      }
+      console.log("[LMS VIDEO: SAVE_ATTEMPT]", {
+        videoRefId: payload.videoRefId,
+        lastWatchedDuration: payload.lastWatchedDuration,
+        videoDuration: payload.videoDuration,
+        isCompleted: payload.isCompleted,
+        sourceType: source.type,
+      });
 
       try {
         await videoService.createVideoProgress(payload);
         lastSavedPositionRef.current = safePosition;
-        if (source.type === "google-drive") {
-          console.log("[GOOGLE DRIVE] API SUCCESS", safePosition);
-        }
-        console.log("[VIDEO PROGRESS] API SUCCESS", safePosition);
-      } catch (error) {
-        if (source.type === "google-drive") {
-          console.error("[GOOGLE DRIVE] API ERROR", error);
-        }
-        console.error("[VIDEO PROGRESS] API ERROR", error);
+        console.log("[LMS VIDEO: SAVE_SUCCESS]", {
+          videoRefId: payload.videoRefId,
+          savedPosition: safePosition,
+          duration: safeDuration,
+        });
+      } catch (err) {
+        console.error("[LMS VIDEO: SAVE_FAILED]", {
+          videoRefId: payload.videoRefId,
+          error: err instanceof Error ? err.message : err,
+        });
       } finally {
         progressRequestInFlightRef.current = false;
+        // Process queued pending pause position if one arrived while request was in-flight
         if (pendingPausePositionRef.current !== null) {
           const nextPos = pendingPausePositionRef.current;
           pendingPausePositionRef.current = null;
-          void saveProgressOnPause(nextPos);
+          void sendVideoProgress(nextPos, isFinal);
         }
       }
     },
-    [source.type, resolveVideoRefId, duration, video, saveProgressOnPause],
+    [source.type, resolveVideoRefId, duration, video]
   );
 
-  // Central 1-second interval tracker with 5-second checkpoint condition
-  const trackVideoProgress = useCallback(() => {
-    console.log("[VIDEO PROGRESS] TRACK CALLED");
-
-    const videoEl = htmlVideoRef.current || videoRef.current;
-    console.log("[VIDEO PROGRESS] VIDEO ELEMENT", videoEl);
-
-    if (source.type === "google-drive") {
-      if (htmlVideoRef.current) {
-        console.log("[GOOGLE DRIVE] VIDEO ELEMENT", htmlVideoRef.current);
-      } else {
-        console.log("[GOOGLE DRIVE] VIDEO ELEMENT NOT FOUND");
-      }
-    }
-
-    if (!videoEl) {
-      return;
-    }
-
-    if (videoEl.paused || videoEl.ended) {
-      return;
-    }
-
-    // Advance Google Drive timer position while playing
-    if (source.type === "google-drive" && isDrivePlayingRef.current) {
-      driveTimeRef.current += 1;
-      setCurrent(driveTimeRef.current);
-      latestCurrentTimeRef.current = driveTimeRef.current;
-    }
-
-    const rawTime = videoEl.currentTime;
-    if (!Number.isFinite(rawTime) || rawTime < 0) {
-      return;
-    }
-
-    const currentPosition = Math.floor(rawTime);
-    console.log("[VIDEO PROGRESS] CURRENT POSITION", currentPosition);
-    console.log(
-      "[VIDEO PROGRESS] LAST SAVED POSITION",
-      lastSavedPositionRef.current,
-    );
-
-    if (source.type === "google-drive") {
-      console.log("[GOOGLE DRIVE] CURRENT TIME", currentPosition);
-      const dur = Math.floor(videoEl.duration || duration || 0);
-      console.log("[GOOGLE DRIVE] VIDEO DURATION", dur);
-    }
-
-    // Detect jump/seek between 1-second ticks
-    const tickDelta = currentPosition - prevTickPositionRef.current;
-    if (tickDelta < 0 || tickDelta > 3) {
-      lastCheckedPositionRef.current = currentPosition;
-    }
-    prevTickPositionRef.current = currentPosition;
-
-    const unsavedDuration = Math.max(
-      0,
-      currentPosition - lastCheckedPositionRef.current,
-    );
-    console.log("[VIDEO PROGRESS] UNSAVED DURATION", unsavedDuration);
-
-    if (source.type === "google-drive") {
-      console.log("[GOOGLE DRIVE] TRACK PROGRESS", {
-        currentPosition,
-        lastSaved: lastSavedPositionRef.current,
-        unsavedDuration,
-      });
-    }
-
-    const videoRefId = resolveVideoRefId();
-    console.log("[VIDEO PROGRESS] VIDEO REF ID", videoRefId);
-
-    // Checkpoint condition: 5 new seconds of continuous playback accumulated
-    if (unsavedDuration >= 5) {
-      if (progressRequestInFlightRef.current) {
-        return;
-      }
-
-      lastCheckedPositionRef.current = currentPosition;
-      void sendVideoProgress(currentPosition, false);
-    }
-  }, [source.type, duration, resolveVideoRefId, sendVideoProgress]);
-
-  // Keep ref to latest trackVideoProgress callback to avoid stale interval closures
-  const savedTrackCallback = useRef<() => void>(() => {});
-  savedTrackCallback.current = trackVideoProgress;
-
-  // Stop tracking timer safely
+  // Stop periodic progress tracking timer
   const stopProgressTracking = useCallback(() => {
-    console.log("[VIDEO PROGRESS] STOP TRACKING");
-
     if (progressTimerRef.current !== null) {
       clearInterval(progressTimerRef.current);
       progressTimerRef.current = null;
+      console.log("[LMS VIDEO: TIMER_STOPPED] Progress tracking timer cleared");
     }
   }, []);
 
-  // Start tracking timer
+  // Start periodic 10-second progress tracking timer (only during active playback)
   const startProgressTracking = useCallback(() => {
-    if (source.type === "google-drive") {
-      console.log("[GOOGLE DRIVE] START PROGRESS TRACKING");
-    }
-    console.log("[VIDEO PROGRESS] START TRACKING");
+    stopProgressTracking();
 
-    if (progressTimerRef.current !== null) {
+    // Google Drive and unsupported iframes do not expose real-time playback
+    if (source.type === "google-drive" || source.type === "vimeo" || source.type === "unknown") {
       return;
     }
 
-    progressTimerRef.current = setInterval(() => {
-      console.log("[VIDEO PROGRESS] TIMER TICK");
-      savedTrackCallback.current();
-    }, 1000);
+    console.log("[LMS VIDEO: TIMER_STARTED] 10-second progress interval started for video:", activeVideoIdRef.current);
 
-    console.log("[VIDEO PROGRESS] TIMER CREATED");
-  }, [source.type]);
+    // Standard LMS interval: save progress every 10 seconds of active playback
+    progressTimerRef.current = setInterval(() => {
+      if (!isPlayingRef.current) {
+        stopProgressTracking();
+        return;
+      }
+
+      let currentPos = 0;
+      if (source.type === "youtube" && ytPlayerRef.current) {
+        try {
+          const t = ytPlayerRef.current.getCurrentTime?.();
+          if (typeof t === "number" && Number.isFinite(t)) currentPos = t;
+        } catch {
+          // Ignore error reading position from YouTube API
+        }
+      } else if (htmlVideoRef.current) {
+        if (htmlVideoRef.current.paused || htmlVideoRef.current.ended) {
+          stopProgressTracking();
+          return;
+        }
+        currentPos = htmlVideoRef.current.currentTime;
+      }
+
+      if (Number.isFinite(currentPos) && currentPos > 0) {
+        console.log("[LMS VIDEO: 10S_TICK]", {
+          videoRefId: activeVideoIdRef.current,
+          currentPosition: Math.floor(currentPos),
+        });
+        void sendVideoProgress(currentPos, false);
+      }
+    }, 10000);
+  }, [source.type, stopProgressTracking, sendVideoProgress]);
+
+  // Pause flush: stops timer and immediately saves current position
+  const saveProgressOnPause = useCallback(
+    async (explicitPosition?: number) => {
+      if (finalProgressSentRef.current) return;
+
+      let pos: number | undefined = explicitPosition;
+      if (typeof pos !== "number") {
+        if (source.type === "youtube" && ytPlayerRef.current) {
+          try {
+            const t = ytPlayerRef.current.getCurrentTime?.();
+            if (typeof t === "number" && Number.isFinite(t)) pos = t;
+          } catch {
+            // Ignore error reading position from YouTube API
+          }
+        } else if (htmlVideoRef.current) {
+          pos = htmlVideoRef.current.currentTime;
+        }
+      }
+
+      if (typeof pos === "number" && Number.isFinite(pos) && pos >= 0) {
+        console.log("[LMS VIDEO: PAUSE_FLUSH]", {
+          videoRefId: activeVideoIdRef.current,
+          pausePosition: Math.floor(pos),
+        });
+        await sendVideoProgress(pos, false);
+      }
+    },
+    [source.type, sendVideoProgress]
+  );
 
   // Play handler
   const handlePlay = useCallback(() => {
-    if (source.type === "google-drive") {
-      isDrivePlayingRef.current = true;
-      console.log("[GOOGLE DRIVE] PLAY");
-      if (htmlVideoRef.current) {
-        console.log("[GOOGLE DRIVE] VIDEO ELEMENT", htmlVideoRef.current);
-      } else {
-        console.log("[GOOGLE DRIVE] VIDEO ELEMENT NOT FOUND");
-      }
-    }
-    console.log("[VIDEO PROGRESS] PLAY");
+    console.log("[LMS VIDEO: EVENT_PLAY]", {
+      videoRefId: activeVideoIdRef.current,
+      sourceType: source.type,
+    });
     setPlaying(true);
     isPlayingRef.current = true;
-    isYtPlayingRef.current = true;
     startProgressTracking();
   }, [source.type, startProgressTracking]);
 
-  // Pause handler: stops tracking and immediately saves exact current position
+  // Pause handler
   const handlePause = useCallback(() => {
-    if (source.type === "google-drive") {
-      isDrivePlayingRef.current = false;
-      console.log("[GOOGLE DRIVE] PAUSE");
-    }
-    console.log("[VIDEO] PAUSE EVENT");
-    console.log("[VIDEO PROGRESS] PAUSE");
+    console.log("[LMS VIDEO: EVENT_PAUSE]", {
+      videoRefId: activeVideoIdRef.current,
+      sourceType: source.type,
+    });
     setPlaying(false);
     isPlayingRef.current = false;
-    isYtPlayingRef.current = false;
     stopProgressTracking();
     void saveProgressOnPause();
   }, [source.type, stopProgressTracking, saveProgressOnPause]);
 
-  // Video end handler: sends final completed progress and stops timer
+  // Ended handler
   const handleEnded = useCallback(() => {
-    if (source.type === "google-drive") {
-      isDrivePlayingRef.current = false;
-      isDriveEndedRef.current = true;
-      console.log("[GOOGLE DRIVE] END");
-    }
-    console.log("[VIDEO PROGRESS] END");
     setPlaying(false);
     isPlayingRef.current = false;
-    isYtPlayingRef.current = false;
     stopProgressTracking();
 
-    if (finalProgressSentRef.current) {
-      return;
-    }
+    if (finalProgressSentRef.current) return;
     finalProgressSentRef.current = true;
 
-    const videoEl = htmlVideoRef.current || videoRef.current;
-    const finalDuration =
-      videoEl && Number.isFinite(videoEl.duration) && videoEl.duration > 0
-        ? Math.floor(videoEl.duration)
-        : Math.floor(lastSavedPositionRef.current);
-
-    void sendVideoProgress(finalDuration, true);
-  }, [source.type, stopProgressTracking, sendVideoProgress]);
-
-  // Seeking handler: synchronizes base reference checkpoint without breaking tracker
-  const handleSeek = useCallback(
-    (newTime: number) => {
-      const clamped = Math.max(0, Math.floor(newTime));
-
-      lastCheckedPositionRef.current = clamped;
-      prevTickPositionRef.current = clamped;
-
-      if (source.type === "google-drive") {
-        driveTimeRef.current = clamped;
-        console.log("[GOOGLE DRIVE] SEEK", clamped);
+    let finalDur = 0;
+    if (source.type === "youtube" && ytPlayerRef.current) {
+      try {
+        const d = ytPlayerRef.current.getDuration?.();
+        if (typeof d === "number" && Number.isFinite(d)) finalDur = d;
+      } catch {
+        // Ignore error reading duration from YouTube API
       }
-      console.log(
-        "[VIDEO PROGRESS] SEEK",
-        clamped,
-        "LAST SAVED:",
-        lastSavedPositionRef.current,
-      );
-    },
-    [source.type],
-  );
+    } else if (htmlVideoRef.current) {
+      finalDur = htmlVideoRef.current.duration || 0;
+    }
+    if (finalDur <= 0) {
+      finalDur = duration || lastSavedPositionRef.current || 0;
+    }
 
-  // Dedicated resume function: applies saved position once source & metadata are ready
+    console.log("[LMS VIDEO: EVENT_ENDED]", {
+      videoRefId: activeVideoIdRef.current,
+      finalDuration: finalDur,
+      isCompleted: true,
+    });
+
+    void sendVideoProgress(finalDur, true);
+  }, [source.type, stopProgressTracking, duration, sendVideoProgress]);
+
+  // Seeking handler
+  const handleSeek = useCallback((newTime: number) => {
+    const clamped = Math.max(0, Math.floor(newTime));
+    latestCurrentTimeRef.current = clamped;
+  }, []);
+
+  // Authoritative Resume Restorer
   const applyResumePosition = useCallback(() => {
     if (resumeAppliedRef.current) {
-      console.log("[VIDEO RESUME] ALREADY APPLIED");
       return;
     }
 
     if (resumePositionRef.current === null) {
-      console.log("[VIDEO RESUME] NO SAVED POSITION");
       return;
     }
 
-    const savedPosition = Number(resumePositionRef.current);
-    if (!Number.isFinite(savedPosition) || savedPosition <= 0) {
-      console.log("[VIDEO RESUME] NO SAVED POSITION");
+    const savedPos = Number(resumePositionRef.current);
+    if (!Number.isFinite(savedPos) || savedPos <= 0) {
       resumeAppliedRef.current = true;
       return;
     }
 
-    // 1. YouTube Provider (PRESERVED UNCHANGED)
+    // 1. YouTube Provider
     if (source.type === "youtube") {
       if (isCompletedRef.current) {
-        try {
-          ytPlayerRef.current?.seekTo?.(0, true);
-        } catch {}
         resumeAppliedRef.current = true;
         return;
       }
 
-      if (
-        ytPlayerRef.current &&
-        typeof ytPlayerRef.current.seekTo === "function"
-      ) {
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === "function") {
         let ytDuration = 0;
         try {
           const d = ytPlayerRef.current.getDuration?.();
-          if (typeof d === "number" && Number.isFinite(d)) {
-            ytDuration = d;
-          }
-        } catch {}
-
-        if (ytDuration > 0) {
-          console.log("[VIDEO RESUME] VIDEO DURATION", ytDuration);
+          if (typeof d === "number" && Number.isFinite(d) && d > 0) ytDuration = d;
+        } catch {
+          // Ignore error reading duration from YouTube API
         }
 
-        const safePosition =
+        const safePos =
           ytDuration > 0
-            ? Math.min(savedPosition, Math.max(0, ytDuration - 0.5))
-            : savedPosition;
+            ? Math.min(savedPos, Math.max(0, ytDuration - 1))
+            : savedPos;
 
-        console.log(`[VIDEO RESUME] APPLYING POSITION: ${safePosition}`);
         try {
-          ytPlayerRef.current.seekTo(safePosition, true);
-          ytTimeRef.current = safePosition;
-          latestCurrentTimeRef.current = safePosition;
-          lastSavedPositionRef.current = Math.floor(safePosition);
-          lastCheckedPositionRef.current = Math.floor(safePosition);
-          prevTickPositionRef.current = Math.floor(safePosition);
-          console.log(`[VIDEO RESUME] RESUMED FROM: ${safePosition}`);
+          ytPlayerRef.current.seekTo(safePos, true);
+          latestCurrentTimeRef.current = safePos;
+          lastSavedPositionRef.current = Math.floor(safePos);
           resumeAppliedRef.current = true;
+          setResumeToast(safePos);
+          setTimeout(() => setResumeToast(null), 3500);
         } catch (err) {
-          console.warn("[VIDEO RESUME] Unable to apply saved position", err);
+          console.warn("[VIDEO RESUME] Unable to apply YouTube saved position", err);
         }
-      } else {
-        console.log("[VIDEO RESUME] VIDEO NOT READY");
       }
       return;
     }
 
-    // 2. HTML5 Video Element (Direct, HLS, DASH, or Google Drive when rendered in HTML5 video)
+    // 2. HTML5 Video Element (Direct / AWS S3 / CloudFront / GCS / Azure / HLS / DASH)
     const videoEl = htmlVideoRef.current;
     if (videoEl) {
+      // Must wait until metadata and duration are ready
       if (
         videoEl.readyState < 1 ||
         !Number.isFinite(videoEl.duration) ||
         videoEl.duration <= 0
       ) {
-        console.log("[VIDEO RESUME] VIDEO NOT READY");
         return;
       }
 
       const totalDur = videoEl.duration;
-      console.log("[VIDEO RESUME] VIDEO DURATION", totalDur);
 
-      if (isCompletedRef.current || (totalDur > 0 && savedPosition >= totalDur)) {
-        console.log("[VIDEO RESUME] VIDEO ALREADY COMPLETED, STARTING AT 0");
+      // If video was already completed or saved near the very end, start from 0
+      if (isCompletedRef.current || (totalDur > 0 && savedPos >= totalDur - 2)) {
+        console.log("[LMS VIDEO: RESUME_START_ZERO]", {
+          videoRefId: activeVideoIdRef.current,
+          savedPosition: savedPos,
+          totalDuration: totalDur,
+          reason: isCompletedRef.current ? "already_completed" : "near_end_boundary",
+        });
         videoEl.currentTime = 0;
         setCurrent(0);
         resumeAppliedRef.current = true;
         return;
       }
 
-      const safePosition = Math.min(
-        savedPosition,
-        Math.max(0, totalDur - 0.5),
-      );
-
-      console.log(`[VIDEO RESUME] APPLYING POSITION: ${safePosition}`);
-      videoEl.currentTime = safePosition;
-      setCurrent(safePosition);
-      latestCurrentTimeRef.current = safePosition;
-      lastSavedPositionRef.current = Math.floor(safePosition);
-      lastCheckedPositionRef.current = Math.floor(safePosition);
-      prevTickPositionRef.current = Math.floor(safePosition);
-      console.log(`[VIDEO RESUME] RESUMED FROM: ${safePosition}`);
+      const safePos = Math.min(savedPos, Math.max(0, totalDur - 1));
+      console.log("[LMS VIDEO: RESUME_SEEK_SUCCESS]", {
+        videoRefId: activeVideoIdRef.current,
+        resumedTo: safePos,
+        totalDuration: totalDur,
+      });
+      videoEl.currentTime = safePos;
+      setCurrent(safePos);
+      latestCurrentTimeRef.current = safePos;
+      lastSavedPositionRef.current = Math.floor(safePos);
       resumeAppliedRef.current = true;
+      setResumeToast(safePos);
+      setTimeout(() => setResumeToast(null), 3500);
       return;
     }
 
-    // 3. Google Drive preview iframe adapter (when HTML5 video element is not mounted)
+    // 3. Google Drive / Other Embeds:
+    // Google Drive's sandboxed preview iframe does not expose an external seek API.
+    // Mark resume evaluated so we don't block subsequent operations.
     if (source.type === "google-drive") {
-      console.log(`[VIDEO RESUME] APPLYING POSITION: ${savedPosition}`);
-      driveTimeRef.current = savedPosition;
-      setCurrent(savedPosition);
-      latestCurrentTimeRef.current = savedPosition;
-      lastSavedPositionRef.current = Math.floor(savedPosition);
-      lastCheckedPositionRef.current = Math.floor(savedPosition);
-      prevTickPositionRef.current = Math.floor(savedPosition);
-      console.log(`[VIDEO RESUME] RESUMED FROM: ${savedPosition}`);
+      console.log("[LMS VIDEO: GOOGLE_DRIVE_NOTICE]", {
+        videoRefId: activeVideoIdRef.current,
+        note: "Google Drive sandboxed preview iframe does not expose an external seek API. Automated seeking is unavailable for sandboxed Drive embeds.",
+      });
       resumeAppliedRef.current = true;
-      return;
     }
-
-    console.log("[VIDEO RESUME] VIDEO NOT READY");
   }, [source.type]);
 
-  // Dedicated cleanup on component unmount
-  useEffect(() => {
-    return () => {
-      stopProgressTracking();
-      progressRequestInFlightRef.current = false;
-      isPlayingRef.current = false;
-      isYtPlayingRef.current = false;
-    };
-  }, [stopProgressTracking]);
-
-  // Log unsupported sources without leaking tokens
-  useEffect(() => {
-    if (source.type === "unknown" && videoUrl) {
-      console.error("Unsupported video source", {
-        url: sanitizeVideoUrlForLogging(videoUrl),
-        sourceType: source.type,
-      });
-    }
-  }, [source.type, videoUrl]);
-
-  // NEW VIDEO: Reset tracking & load new progress when video changes
+  // Video Changed: Reset all tracking states & fetch saved progress
   useEffect(() => {
     const vRefId = resolveVideoRefId();
     const videoKey = `${vRefId || ""}-${videoUrl || ""}`;
@@ -678,13 +550,6 @@ export default function VideoPlayer({
     }
     prevVideoKeyRef.current = videoKey;
 
-    if (source.type === "google-drive") {
-      console.log("[GOOGLE DRIVE] LOAD", {
-        url: sanitizeVideoUrlForLogging(videoUrl),
-        videoId: source.videoId,
-      });
-    }
-    console.log("[VIDEO PROGRESS] VIDEO CHANGED");
     stopProgressTracking();
     progressRequestInFlightRef.current = false;
     pendingPausePositionRef.current = null;
@@ -692,29 +557,18 @@ export default function VideoPlayer({
     resumePositionRef.current = null;
     isCompletedRef.current = false;
     lastSavedPositionRef.current = 0;
-    lastCheckedPositionRef.current = 0;
-    prevTickPositionRef.current = 0;
     latestCurrentTimeRef.current = 0;
     latestDurationRef.current = 0;
     finalProgressSentRef.current = false;
+    setResumeToast(null);
 
-    // Reset Google Drive refs
-    driveTimeRef.current = 0;
-    isDrivePlayingRef.current = false;
-    isDriveEndedRef.current = false;
-
-    // Reset UI playback states
     setIframeError(false);
     setError(null);
     setPlaying(false);
     isPlayingRef.current = false;
-    isYtPlayingRef.current = false;
     setCurrent(0);
     setDuration(0);
     setSavedProgress(null);
-
-    console.log("VIDEO URL:", sanitizeVideoUrlForLogging(videoUrl));
-    console.log("VIDEO TYPE:", source.type);
 
     if (!vRefId) {
       return;
@@ -724,37 +578,34 @@ export default function VideoPlayer({
     void videoService
       .getVideoProgress(vRefId)
       .then((progress) => {
-        if (!active) return;
-        console.log("[VIDEO RESUME] PROGRESS RESPONSE", progress);
+        if (!active || activeVideoIdRef.current !== vRefId) return;
         setSavedProgress(progress);
         if (progress) {
+          const progMeta = progress as unknown as VideoMetaRecord;
           const rawDuration =
             progress.lastWatchedDuration ??
-            (progress as any)?.last_watched_duration;
+            progMeta?.last_watched_duration;
           const parsed = Number(rawDuration);
           const durationVal = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
           resumePositionRef.current = durationVal;
           isCompletedRef.current = Boolean(progress.isCompleted);
           if (durationVal > 0) {
-            console.log(`[VIDEO RESUME] SAVED POSITION: ${durationVal}`);
             lastSavedPositionRef.current = Math.floor(durationVal);
-            lastCheckedPositionRef.current = Math.floor(durationVal);
-            prevTickPositionRef.current = Math.floor(durationVal);
-            driveTimeRef.current = Math.floor(durationVal);
-          } else {
-            console.log("[VIDEO RESUME] NO SAVED POSITION");
           }
+          console.log("[LMS VIDEO: GET_PROGRESS_SUCCESS]", {
+            videoRefId: vRefId,
+            lastWatchedDuration: durationVal,
+            isCompleted: Boolean(progress.isCompleted),
+          });
         } else {
-          console.log("[VIDEO RESUME] NO SAVED POSITION");
           resumePositionRef.current = 0;
           isCompletedRef.current = false;
         }
         applyResumePosition();
       })
       .catch((err) => {
-        console.warn("Failed to load video progress:", err);
-        if (active) {
-          console.log("[VIDEO RESUME] NO SAVED POSITION");
+        console.warn("[LMS VIDEO: GET_PROGRESS_FAILED]", { videoRefId: vRefId, error: err });
+        if (active && activeVideoIdRef.current === vRefId) {
           resumePositionRef.current = 0;
           isCompletedRef.current = false;
           applyResumePosition();
@@ -764,112 +615,48 @@ export default function VideoPlayer({
     return () => {
       active = false;
     };
-  }, [currentVideoRefId, videoUrl, source.type, source.videoId, resolveVideoRefId, stopProgressTracking, applyResumePosition]);
+  }, [currentVideoRefId, videoUrl, resolveVideoRefId, stopProgressTracking, applyResumePosition]);
 
-  // Provide Google Drive and YouTube adapters to videoRef
+  // Lifecycle flush on tab hide / page leave / unmount
   useEffect(() => {
-    if (source.type === "google-drive") {
-      videoRef.current = {
-        get currentTime() {
-          return driveTimeRef.current;
-        },
-        get duration() {
-          return (
-            duration ||
-            (video as any)?.durationSec ||
-            (video as any)?.duration ||
-            0
-          );
-        },
-        get paused() {
-          return !isDrivePlayingRef.current;
-        },
-        get ended() {
-          return isDriveEndedRef.current;
-        },
-      };
-    } else if (source.type === "youtube") {
-      videoRef.current = {
-        get currentTime() {
-          if (
-            ytPlayerRef.current &&
-            typeof ytPlayerRef.current.getCurrentTime === "function"
-          ) {
-            try {
-              const t = ytPlayerRef.current.getCurrentTime();
-              if (typeof t === "number" && !isNaN(t)) {
-                latestCurrentTimeRef.current = t;
-                return t;
-              }
-            } catch {}
-          }
-          return ytTimeRef.current;
-        },
-        get duration() {
-          if (
-            ytPlayerRef.current &&
-            typeof ytPlayerRef.current.getDuration === "function"
-          ) {
-            try {
-              const d = ytPlayerRef.current.getDuration();
-              if (typeof d === "number" && !isNaN(d)) {
-                latestDurationRef.current = d;
-                return d;
-              }
-            } catch {}
-          }
-          return ytDurationRef.current;
-        },
-        get paused() {
-          if (
-            ytPlayerRef.current &&
-            typeof ytPlayerRef.current.getPlayerState === "function"
-          ) {
-            try {
-              const state = ytPlayerRef.current.getPlayerState();
-              return state !== 1;
-            } catch {}
-          }
-          return !isYtPlayingRef.current;
-        },
-        get ended() {
-          if (
-            ytPlayerRef.current &&
-            typeof ytPlayerRef.current.getPlayerState === "function"
-          ) {
-            try {
-              return ytPlayerRef.current.getPlayerState() === 0;
-            } catch {}
-          }
-          return false;
-        },
-      };
-    }
-  }, [source.type, duration, video]);
-
-  // Google Drive interaction detection: automatically tracks playback when user interacts with iframe
-  useEffect(() => {
-    if (source.type !== "google-drive") return;
-
-    const onWindowBlur = () => {
-      // User clicked into the Google Drive iframe to play
-      if (document.activeElement === iframeRef.current) {
-        if (!isDrivePlayingRef.current) {
-          isDrivePlayingRef.current = true;
-          setPlaying(true);
-          isPlayingRef.current = true;
-          handlePlay();
-        }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && isPlayingRef.current) {
+        void saveProgressOnPause();
       }
     };
 
-    window.addEventListener("blur", onWindowBlur);
-    return () => {
-      window.removeEventListener("blur", onWindowBlur);
+    const handleBeforeUnload = () => {
+      if (isPlayingRef.current) {
+        void saveProgressOnPause();
+      }
     };
-  }, [source.type, handlePlay]);
 
-  // YouTube postMessage and IFrame API listeners (PRESERVED UNCHANGED)
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      stopProgressTracking();
+      if (isPlayingRef.current) {
+        void saveProgressOnPause();
+      }
+      progressRequestInFlightRef.current = false;
+      isPlayingRef.current = false;
+    };
+  }, [saveProgressOnPause, stopProgressTracking]);
+
+  // Log unsupported sources without exposing sensitive tokens
+  useEffect(() => {
+    if (source.type === "unknown" && videoUrl) {
+      console.error("[VIDEO PLAYER] Unsupported video source:", {
+        url: sanitizeVideoUrlForLogging(videoUrl),
+        sourceType: source.type,
+      });
+    }
+  }, [source.type, videoUrl]);
+
+  // YouTube postMessage and IFrame API adapter
   useEffect(() => {
     if (source.type !== "youtube" || !source.videoId) return;
 
@@ -891,15 +678,16 @@ export default function VideoPlayer({
           }
         } else if (data && data.event === "infoDelivery" && data.info) {
           if (typeof data.info.currentTime === "number") {
-            ytTimeRef.current = data.info.currentTime;
             latestCurrentTimeRef.current = data.info.currentTime;
           }
           if (typeof data.info.duration === "number") {
             ytDurationRef.current = data.info.duration;
-            latestDurationRef.current = data.info.duration;
+            setDuration(data.info.duration);
           }
         }
-      } catch {}
+      } catch {
+        // Ignore malformed postMessage data
+      }
     };
 
     window.addEventListener("message", handleMessage);
@@ -907,16 +695,16 @@ export default function VideoPlayer({
     const initYt = () => {
       if (!iframeRef.current || !active) return;
       try {
-        const YT = (window as any).YT;
+        const win = window as unknown as YouTubeWindow;
+        const YT = win.YT;
         if (YT && YT.Player) {
           ytPlayerRef.current = new YT.Player(iframeRef.current, {
             events: {
-              onReady: (event: any) => {
-                console.log("YOUTUBE PLAYER READY");
+              onReady: (event: YouTubePlayerEvent) => {
                 ytPlayerRef.current = event.target;
                 applyResumePosition();
               },
-              onStateChange: (event: any) => {
+              onStateChange: (event: YouTubePlayerEvent) => {
                 if (event.data === 1) {
                   handlePlay();
                 } else if (event.data === 2) {
@@ -928,15 +716,18 @@ export default function VideoPlayer({
             },
           });
         }
-      } catch {}
+      } catch {
+        // Ignore YouTube player initialization error
+      }
     };
 
     if (typeof window !== "undefined") {
-      if ((window as any).YT && (window as any).YT.Player) {
+      const win = window as unknown as YouTubeWindow;
+      if (win.YT && win.YT.Player) {
         initYt();
       } else {
-        const existingCallback = (window as any).onYouTubeIframeAPIReady;
-        (window as any).onYouTubeIframeAPIReady = () => {
+        const existingCallback = win.onYouTubeIframeAPIReady;
+        win.onYouTubeIframeAPIReady = () => {
           if (typeof existingCallback === "function") existingCallback();
           initYt();
         };
@@ -954,25 +745,16 @@ export default function VideoPlayer({
       window.removeEventListener("message", handleMessage);
       try {
         ytPlayerRef.current?.destroy?.();
-      } catch {}
+      } catch {
+        // Ignore YouTube player destroy error
+      }
       ytPlayerRef.current = null;
     };
-  }, [
-    source.type,
-    source.videoId,
-    handlePlay,
-    handlePause,
-    handleEnded,
-    applyResumePosition,
-  ]);
+  }, [source.type, source.videoId, handlePlay, handlePause, handleEnded, applyResumePosition]);
 
-  // Synchronize resume position for YouTube when savedProgress loads after player initialization (PRESERVED UNCHANGED)
+  // Synchronize resume position for YouTube when savedProgress loads after player initialization
   useEffect(() => {
-    if (
-      source.type === "youtube" &&
-      !resumeAppliedRef.current &&
-      savedProgress
-    ) {
+    if (source.type === "youtube" && !resumeAppliedRef.current && savedProgress) {
       applyResumePosition();
     }
   }, [savedProgress, source.type, applyResumePosition]);
@@ -982,14 +764,11 @@ export default function VideoPlayer({
     if (source.type !== "hls" || !htmlVideoRef.current) return;
     const v = htmlVideoRef.current;
 
+    const win = typeof window !== "undefined" ? (window as unknown as YouTubeWindow) : null;
     if (v.canPlayType("application/vnd.apple.mpegurl")) {
       v.src = source.url;
-    } else if (
-      typeof window !== "undefined" &&
-      (window as any).Hls &&
-      (window as any).Hls.isSupported()
-    ) {
-      const Hls = (window as any).Hls;
+    } else if (win?.Hls && win.Hls.isSupported()) {
+      const Hls = win.Hls;
       const hls = new Hls({ enableWorker: true });
       hls.loadSource(source.url);
       hls.attachMedia(v);
@@ -1008,34 +787,18 @@ export default function VideoPlayer({
     setDuration(totalDuration);
     latestDurationRef.current = totalDuration;
     setLoading(false);
-
-    console.log("[VIDEO RESUME] VIDEO METADATA READY");
-    console.log("[VIDEO RESUME] VIDEO DURATION", totalDuration);
-    console.log("VIDEO METADATA LOADED", {
-      duration: totalDuration,
-    });
-
     applyResumePosition();
   };
 
-  // Synchronize resume position for HTML5 when savedProgress loads after metadata already loaded
+  // Synchronize resume position for HTML5 when savedProgress arrives after metadata loaded
   useEffect(() => {
     if (!resumeAppliedRef.current && savedProgress) {
       applyResumePosition();
     }
   }, [savedProgress, applyResumePosition]);
 
-  // HTML5 custom controls handlers: calling v.pause() fires native onPause
+  // HTML5 custom controls handlers
   const togglePlay = useCallback(() => {
-    if (source.type === "google-drive") {
-      if (playing) {
-        handlePause();
-      } else {
-        handlePlay();
-      }
-      return;
-    }
-
     const v = htmlVideoRef.current;
     if (!v) return;
     if (v.paused) {
@@ -1046,7 +809,7 @@ export default function VideoPlayer({
           setError(null);
         })
         .catch((playbackErr) => {
-          console.error("VIDEO PLAYBACK ERROR", {
+          console.error("[VIDEO PLAYER] Playback error:", {
             sourceType: source.type,
             url: sanitizeVideoUrlForLogging(videoUrl),
             error: playbackErr,
@@ -1056,15 +819,12 @@ export default function VideoPlayer({
     } else {
       v.pause();
     }
-  }, [source.type, playing, handlePlay, handlePause, videoUrl]);
+  }, [source.type, videoUrl]);
 
   const onSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const t = (Number(e.target.value) / 100) * duration;
     setCurrent(t);
     latestCurrentTimeRef.current = t;
-    if (source.type === "google-drive") {
-      driveTimeRef.current = t;
-    }
     const v = htmlVideoRef.current;
     if (v) {
       v.currentTime = t;
@@ -1093,9 +853,6 @@ export default function VideoPlayer({
     const nextTime = Math.min(Math.max(current + sec, 0), duration);
     setCurrent(nextTime);
     latestCurrentTimeRef.current = nextTime;
-    if (source.type === "google-drive") {
-      driveTimeRef.current = nextTime;
-    }
     const v = htmlVideoRef.current;
     if (v) {
       v.currentTime = nextTime;
@@ -1109,12 +866,16 @@ export default function VideoPlayer({
     if (!document.fullscreenElement) {
       el.requestFullscreen?.()
         .then(() => setFullscreen(true))
-        .catch(() => {});
+        .catch(() => {
+          // Ignore fullscreen error
+        });
     } else {
       document
         .exitFullscreen?.()
         .then(() => setFullscreen(false))
-        .catch(() => {});
+        .catch(() => {
+          // Ignore exit fullscreen error
+        });
     }
   };
 
@@ -1124,8 +885,9 @@ export default function VideoPlayer({
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
 
-  // Anti-recording shortcut protections
+  // Anti-recording and security shortcut protections
   useEffect(() => {
+    const el = containerRef.current;
     const onContext = (e: MouseEvent) => e.preventDefault();
     const onKey = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
@@ -1140,10 +902,10 @@ export default function VideoPlayer({
         e.preventDefault();
       }
     };
-    containerRef.current?.addEventListener("contextmenu", onContext);
+    el?.addEventListener("contextmenu", onContext);
     window.addEventListener("keydown", onKey);
     return () => {
-      containerRef.current?.removeEventListener("contextmenu", onContext);
+      el?.removeEventListener("contextmenu", onContext);
       window.removeEventListener("keydown", onKey);
     };
   }, []);
@@ -1173,7 +935,15 @@ export default function VideoPlayer({
       onMouseMove={flashControls}
       onMouseLeave={() => playing && setShowControls(false)}
     >
-      {/* 1. YouTube Player (PRESERVED UNCHANGED) */}
+      {/* Resume Toast Notification */}
+      {resumeToast !== null && (
+        <div className="absolute top-4 right-4 z-40 flex items-center gap-2 rounded-lg bg-black/85 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur-sm border border-emerald-500/30 animate-fade-in">
+          <RotateCcw className="h-3.5 w-3.5 text-emerald-400" />
+          <span>Resumed playback from {formatTime(resumeToast)}</span>
+        </div>
+      )}
+
+      {/* 1. YouTube Player */}
       {source.type === "youtube" && source.videoId ? (
         <>
           <iframe
@@ -1184,14 +954,14 @@ export default function VideoPlayer({
               source.videoId,
               savedProgress && !savedProgress.isCompleted
                 ? savedProgress.lastWatchedDuration
-                : 0,
+                : 0
             )}
             title={displayTitle}
             className="h-full w-full border-0 block"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
             onError={(e) => {
-              console.error("VIDEO PLAYBACK ERROR", {
+              console.error("[VIDEO PLAYER] YouTube embed error:", {
                 sourceType: "youtube",
                 url: sanitizeVideoUrlForLogging(videoUrl),
                 error: e,
@@ -1202,7 +972,7 @@ export default function VideoPlayer({
           {iframeError && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/80 p-4 text-center text-white">
               <AlertCircle className="h-10 w-10 text-red-400" />
-              <p className="text-sm font-medium">Unable to play this video.</p>
+              <p className="text-sm font-medium">Unable to play this YouTube video.</p>
             </div>
           )}
         </>
@@ -1218,7 +988,7 @@ export default function VideoPlayer({
             allow="autoplay; fullscreen; picture-in-picture"
             allowFullScreen
             onError={(e) => {
-              console.error("VIDEO PLAYBACK ERROR", {
+              console.error("[VIDEO PLAYER] Vimeo embed error:", {
                 sourceType: "vimeo",
                 url: sanitizeVideoUrlForLogging(videoUrl),
                 error: e,
@@ -1229,7 +999,7 @@ export default function VideoPlayer({
           {iframeError && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/80 p-4 text-center text-white">
               <AlertCircle className="h-10 w-10 text-red-400" />
-              <p className="text-sm font-medium">Unable to play this video.</p>
+              <p className="text-sm font-medium">Unable to play this Vimeo video.</p>
             </div>
           )}
         </>
@@ -1237,26 +1007,32 @@ export default function VideoPlayer({
 
       {/* 3. Google Drive Player (Plays via official Google Drive preview embed) */}
       {source.type === "google-drive" && source.videoId ? (
-        <>
+        <div className="relative h-full w-full bg-black">
+          {/* Informational provider badge */}
+          <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1 text-xs text-gray-300 backdrop-blur-sm pointer-events-none border border-white/10">
+            <Cloud className="h-3.5 w-3.5 text-blue-400" />
+            <span>Google Drive Preview</span>
+          </div>
+
+          {/* Informational notice when saved progress exists from previous session */}
+          {savedProgress && !savedProgress.isCompleted && savedProgress.lastWatchedDuration > 0 && (
+            <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5 rounded-md bg-black/75 px-3 py-1.5 text-xs text-amber-200 backdrop-blur-sm border border-amber-500/30">
+              <RotateCcw className="h-3.5 w-3.5 text-amber-400" />
+              <span>
+                Last watched: <strong>{formatTime(savedProgress.lastWatchedDuration)}</strong> (scrub player controls manually)
+              </span>
+            </div>
+          )}
+
           <iframe
             ref={iframeRef}
-            src={
-              source.previewUrl
-                ? (savedProgress && !savedProgress.isCompleted && savedProgress.lastWatchedDuration > 0
-                    ? `${source.previewUrl}#t=${savedProgress.lastWatchedDuration}s`
-                    : source.previewUrl)
-                : `https://drive.google.com/file/d/${source.videoId}/preview${
-                    savedProgress && !savedProgress.isCompleted && savedProgress.lastWatchedDuration > 0
-                      ? `#t=${savedProgress.lastWatchedDuration}s`
-                      : ""
-                  }`
-            }
+            src={`https://drive.google.com/file/d/${source.videoId}/preview`}
             title={displayTitle}
             className="h-full w-full border-0 block"
-            allow="autoplay; fullscreen"
+            allow="autoplay; fullscreen; picture-in-picture"
             allowFullScreen
             onError={(e) => {
-              console.error("VIDEO PLAYBACK ERROR", {
+              console.error("[VIDEO PLAYER] Google Drive embed error:", {
                 sourceType: "google-drive",
                 url: sanitizeVideoUrlForLogging(videoUrl),
                 error: e,
@@ -1264,23 +1040,24 @@ export default function VideoPlayer({
               setIframeError(true);
             }}
           />
+
           {iframeError && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/80 p-4 text-center text-white">
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/85 p-4 text-center text-white">
               <AlertCircle className="h-10 w-10 text-red-400" />
-              <p className="text-sm font-medium">Unable to play this video.</p>
+              <p className="text-sm font-medium">Unable to play this Google Drive video.</p>
+              <p className="text-xs text-gray-400 max-w-sm mt-1">
+                Please verify that the file sharing permissions on Google Drive are set to &quot;Anyone with the link can view&quot;.
+              </p>
             </div>
           )}
-        </>
+        </div>
       ) : null}
 
-      {/* 4. Native Video Player (Direct / S3 / CloudFront / CDN / HLS / DASH) */}
+      {/* 4. Native Video Player (Direct, S3, CloudFront, GCS, Azure, CDN, HLS, DASH) */}
       {isNativeVideo ? (
         <>
           <video
-            ref={(el) => {
-              htmlVideoRef.current = el;
-              videoRef.current = el;
-            }}
+            ref={htmlVideoRef}
             src={source.type === "hls" ? undefined : source.url}
             poster={poster}
             playsInline
@@ -1308,7 +1085,7 @@ export default function VideoPlayer({
             }}
             onEnded={handleEnded}
             onError={(e) => {
-              console.error("VIDEO PLAYBACK ERROR", {
+              console.error("[VIDEO PLAYER] Native playback error:", {
                 sourceType: source.type,
                 url: sanitizeVideoUrlForLogging(videoUrl),
                 error: e,
