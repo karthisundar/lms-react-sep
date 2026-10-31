@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
+import { sanitizeHtml } from '@/utils/sanitizeHtml';
 
 export type SupportedDocType = 'pdf' | 'docx' | 'doc' | 'xlsx' | 'xls' | 'txt' | 'unknown';
 
@@ -153,7 +154,7 @@ export default function DocumentPreviewModal({
         })
         .then((arrayBuffer) => mammoth.convertToHtml({ arrayBuffer }))
         .then((result) => {
-          setHtmlContent(result.value || '<p class="italic text-gray-400">Empty document</p>');
+          setHtmlContent(sanitizeHtml(result.value || '<p class="italic text-gray-400">Empty document</p>'));
         })
         .catch((err) => {
           setError(
@@ -435,7 +436,7 @@ export default function DocumentPreviewModal({
                     style={{
                       fontSize: `${zoom}%`,
                     }}
-                    dangerouslySetInnerHTML={{ __html: htmlContent }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(htmlContent) }}
                   />
                 </div>
               )}
@@ -446,7 +447,7 @@ export default function DocumentPreviewModal({
                   {htmlContent && (
                     <div
                       className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-xl shadow-md p-6 mb-4"
-                      dangerouslySetInnerHTML={{ __html: htmlContent }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(htmlContent) }}
                     />
                   )}
                   {textContent && (
