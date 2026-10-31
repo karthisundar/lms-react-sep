@@ -170,9 +170,10 @@ export function getYouTubeVideoId(rawUrl?: string | null): string | null {
  * Builds the embeddable YouTube iframe URL.
  */
 export function getYouTubeEmbedUrl(videoId: string, start = 0): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
   const params = new URLSearchParams({
     enablejsapi: "1",
-    origin: window.location.origin,
+    origin,
     rel: "0",
     ...(start > 0 ? { start: String(Math.floor(start)) } : {}),
   });
@@ -438,4 +439,121 @@ export function getVideoProvider(url?: string | null): VideoProvider {
     default:
       return "unknown";
   }
+}
+
+export interface BuildVideoUrlOptions {
+  baseUrl?: string;
+  folderPath?: string;
+  bucketServiceUrl?: string;
+}
+
+/**
+ * Centralized video URL builder.
+ * Constructs the playback URL using configured base URL, folder path, and stored filename or relative object key.
+ *
+ * Rules:
+ * - Removes duplicate or missing slashes.
+ * - Handles base URLs with or without trailing slashes.
+ * - Handles folder paths with or without leading or trailing slashes.
+ * - Rejects empty or whitespace filenames.
+ * - Rejects path traversal attempts (.. or \).
+ * - Avoids double-encoding existing percent-encoded characters.
+ * - Supports nested relative object keys (e.g. full-stack/module-01/lesson-01.mp4).
+ * - Leaves YouTube, Vimeo, and Google Drive URLs untouched.
+ */
+export function buildVideoUrl(
+  fileNameOrUrl: string | null | undefined,
+  options?: BuildVideoUrlOptions,
+): string {
+  if (!fileNameOrUrl || typeof fileNameOrUrl !== "string") {
+    return "";
+  }
+
+  const trimmed = fileNameOrUrl.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  // 1. Check for path traversal attacks
+  if (trimmed.includes("..") || trimmed.includes("\\")) {
+    console.warn(`[buildVideoUrl] Potential path traversal detected in fileName: ${trimmed}`);
+    return "";
+  }
+
+  // 2. Reject unsafe protocols
+  if (/^(javascript|data|vbscript|file):/i.test(trimmed)) {
+    console.warn(`[buildVideoUrl] Unsafe protocol rejected: ${trimmed}`);
+    return "";
+  }
+
+  // 3. Check if it's already an external provider (YouTube, Vimeo, Google Drive) or full URL
+  const isAbsolute =
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("//");
+
+  if (isAbsolute) {
+    // If it's a known provider or already an absolute URL, return as-is
+    return trimmed;
+  }
+
+  // 4. Resolve base URL and folder path from options or environment variables
+  const envServiceUrl =
+    typeof import.meta !== "undefined" && import.meta.env
+      ? import.meta.env.VITE_VIDEO_SERVICE_URL
+      : typeof process !== "undefined" && process.env
+      ? process.env.VITE_VIDEO_SERVICE_URL
+      : "";
+
+  const envFolderPath =
+    typeof import.meta !== "undefined" && import.meta.env
+      ? import.meta.env.VITE_VIDEO_FOLDER_PATH
+      : typeof process !== "undefined" && process.env
+      ? process.env.VITE_VIDEO_FOLDER_PATH
+      : "";
+
+  const configuredBaseUrl =
+    options?.baseUrl ||
+    options?.bucketServiceUrl ||
+    envServiceUrl ||
+    "";
+
+  const configuredFolderPath =
+    options?.folderPath !== undefined
+      ? options.folderPath
+      : envFolderPath || "";
+
+  // Clean base URL: remove trailing slashes
+  const cleanBase = String(configuredBaseUrl).trim().replace(/\/+$/, "");
+
+  // Clean folder path: trim leading/trailing slashes
+  const cleanFolder = String(configuredFolderPath).trim().replace(/^\/+|\/+$/g, "");
+
+  // Clean relative file/key: trim leading slash
+  let cleanKey = trimmed.replace(/^\/+/, "");
+
+  // If the key already starts with folderPath, don't duplicate it
+  if (cleanFolder && (cleanKey === cleanFolder || cleanKey.startsWith(`${cleanFolder}/`))) {
+    // already prefixed
+  } else if (cleanFolder) {
+    cleanKey = `${cleanFolder}/${cleanKey}`;
+  }
+
+  // Safe encoding of path segments (avoid double-encoding)
+  const segments = cleanKey.split("/").map((segment) => {
+    try {
+      const decoded = decodeURIComponent(segment);
+      return encodeURIComponent(decoded);
+    } catch {
+      return encodeURI(segment);
+    }
+  });
+
+  const finalKey = segments.join("/");
+
+  if (cleanBase) {
+    return `${cleanBase}/${finalKey}`;
+  }
+
+  return `/${finalKey}`;
 }

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, CirclePlay as PlayCircle, Database, Film, Link2, Users, CircleUser as UserCircle, X, BookOpen, Layers, GraduationCap, FileText } from 'lucide-react';
+import { LayoutDashboard, CirclePlay as PlayCircle, Database, Film, Link2, Users, CircleUser as UserCircle, X, BookOpen, Layers, GraduationCap, FileText, Terminal, MessageSquare } from 'lucide-react';
 import type { Role } from '@/types/api';
 
 interface NavItem {
@@ -10,6 +10,7 @@ interface NavItem {
 
 const adminNav: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/admin/enquiries', label: 'Enquiries', icon: MessageSquare },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/courses', label: 'Courses', icon: BookOpen },
   { to: '/admin/modules', label: 'Modules', icon: Layers },
@@ -26,6 +27,7 @@ const adminNav: NavItem[] = [
 
 const studentNav: NavItem[] = [
   { to: '/sessions', label: 'My Sessions', icon: PlayCircle },
+  { to: '/python-editor', label: 'Python Editor', icon: Terminal },
   { to: '/profile', label: 'Profile', icon: UserCircle },
 ];
 

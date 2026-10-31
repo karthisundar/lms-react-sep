@@ -11,7 +11,6 @@ import {
   ChevronUp,
   Star,
   ArrowRight,
-  ArrowLeft,
   Users,
   ShieldCheck,
   Sparkles,
@@ -21,6 +20,7 @@ import {
 } from 'lucide-react';
 import PublicHeader from '@/components/public/PublicHeader';
 import PublicFooter from '@/components/public/PublicFooter';
+import EnquiryPopupModal from '@/components/EnquiryPopupModal';
 import { getCourseBySlug, getAllCourses } from '@/data/coursesData';
 import { useAuth } from '@/context/AuthContext';
 
@@ -504,6 +504,13 @@ export default function CourseDetailPage() {
           </div>
         </div>
       </main>
+
+      {/* Scroll-triggered enquiry popup prefilled with current course */}
+      <EnquiryPopupModal
+        scrollThreshold={0.40}
+        defaultCourse={course.title}
+        source={`course_${course.slug}`}
+      />
 
       <PublicFooter />
     </div>

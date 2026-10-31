@@ -1,10 +1,11 @@
 // src/pages/public/AllCoursesPage.tsx
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Search, Filter, BookOpen, Sparkles, Layers, SlidersHorizontal, ArrowLeft } from 'lucide-react';
+import { Search, BookOpen } from 'lucide-react';
 import PublicHeader from '@/components/public/PublicHeader';
 import PublicFooter from '@/components/public/PublicFooter';
 import CourseCard from '@/components/public/CourseCard';
+import EnquiryPopupModal from '@/components/EnquiryPopupModal';
 import { coursesData, courseCategories } from '@/data/coursesData';
 
 export default function AllCoursesPage() {
@@ -175,6 +176,8 @@ export default function AllCoursesPage() {
           )}
         </div>
       </main>
+
+      <EnquiryPopupModal scrollThreshold={0.40} source="all_courses_page" />
 
       <PublicFooter />
     </div>

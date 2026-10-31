@@ -6,8 +6,6 @@ import type {
   AuthLoginRequest,
   AuthLoginResponse,
   Bucket,
-  BucketCreateInput,
-  BucketUpdateInput,
   Course,
   Lesson,
   LessonNotes,

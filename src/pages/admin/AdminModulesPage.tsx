@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Layers, CheckCircle2, Eye, BookOpen, Hash } from 'lucide-react';
+import { Plus, Pencil, Trash2, Layers, CheckCircle2, Eye, BookOpen } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { moduleMasterService, courseMasterService } from '@/services';
 import type { Module, ModuleCreateInput, ModuleUpdateInput, ModuleStatus, Course } from '@/types/api';
 import DataTable, { type Column } from '@/components/DataTable';
 import Modal from '@/components/Modal';
 import { PageHeader, ErrorBanner, StatusBadge } from '@/components/ui';
+import { validateModuleFields } from '@/utils/formValidation';
 
 interface ModuleFormData {
   moduleRefId: string;
@@ -57,6 +58,7 @@ export default function AdminModulesPage() {
   const [form, setForm] = useState<ModuleFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // View details modal state
   const [viewingTarget, setViewingTarget] = useState<Module | null>(null);
@@ -139,6 +141,7 @@ export default function AdminModulesPage() {
       status: 'draft',
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
   };
@@ -155,6 +158,7 @@ export default function AdminModulesPage() {
       status: mod.status || 'draft',
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
 
@@ -193,28 +197,20 @@ export default function AdminModulesPage() {
     }
   };
 
-  const validateForm = (): string | null => {
-    if (!form.courseRefId.trim()) {
-      return 'Course is required. Please select a course.';
-    }
-    const trimmedName = form.moduleName.trim();
-    if (!trimmedName) {
-      return 'Module Name is required and cannot be empty.';
-    }
-    const order = Number(form.displayOrder);
-    if (isNaN(order) || order < 1) {
-      return 'Display Order must be a positive number greater than 0.';
-    }
-    return null;
-  };
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setFieldErrors({});
 
-    const validationErr = validateForm();
-    if (validationErr) {
-      setFormError(validationErr);
+    const validationErrors = validateModuleFields({
+      courseRefId: form.courseRefId,
+      moduleName: form.moduleName,
+      displayOrder: form.displayOrder,
+      description: form.description,
+    });
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      setFormError(Object.values(validationErrors)[0]);
       return;
     }
 
@@ -530,10 +526,12 @@ export default function AdminModulesPage() {
             </label>
             <select
               id="module-course"
-              className="input"
+              className={`input ${fieldErrors.courseRefId ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.courseRefId}
-              onChange={(e) => setForm({ ...form, courseRefId: e.target.value })}
-              required
+              onChange={(e) => {
+                setForm({ ...form, courseRefId: e.target.value });
+                if (fieldErrors.courseRefId) setFieldErrors({ ...fieldErrors, courseRefId: '' });
+              }}
               disabled={coursesLoading}
             >
               <option value="" disabled>
@@ -545,6 +543,9 @@ export default function AdminModulesPage() {
                 </option>
               ))}
             </select>
+            {fieldErrors.courseRefId && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.courseRefId}</p>
+            )}
             {courses.length === 0 && !coursesLoading && (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                 No courses available. Please create a course in Course Master first.
@@ -558,13 +559,18 @@ export default function AdminModulesPage() {
             </label>
             <input
               id="module-name"
-              className="input"
+              className={`input ${fieldErrors.moduleName ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.moduleName}
-              onChange={(e) => setForm({ ...form, moduleName: e.target.value })}
-              required
+              onChange={(e) => {
+                setForm({ ...form, moduleName: e.target.value });
+                if (fieldErrors.moduleName) setFieldErrors({ ...fieldErrors, moduleName: '' });
+              }}
               placeholder="e.g. Introduction to Asynchronous Programming"
               autoFocus
             />
+            {fieldErrors.moduleName && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.moduleName}</p>
+            )}
           </div>
 
           <div>
@@ -573,12 +579,18 @@ export default function AdminModulesPage() {
             </label>
             <textarea
               id="module-description"
-              className="input min-h-[84px] py-2"
+              className={`input min-h-[84px] py-2 ${fieldErrors.description ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, description: e.target.value });
+                if (fieldErrors.description) setFieldErrors({ ...fieldErrors, description: '' });
+              }}
               placeholder="Detailed syllabus, topics, or lessons included in this module..."
               rows={3}
             />
+            {fieldErrors.description && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.description}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -590,11 +602,16 @@ export default function AdminModulesPage() {
                 id="module-display-order"
                 type="number"
                 min={1}
-                className="input"
+                className={`input ${fieldErrors.displayOrder ? 'border-red-500 focus:ring-red-500' : ''}`}
                 value={form.displayOrder}
-                onChange={(e) => setForm({ ...form, displayOrder: Math.max(1, parseInt(e.target.value) || 1) })}
-                required
+                onChange={(e) => {
+                  setForm({ ...form, displayOrder: Math.max(1, parseInt(e.target.value) || 1) });
+                  if (fieldErrors.displayOrder) setFieldErrors({ ...fieldErrors, displayOrder: '' });
+                }}
               />
+              {fieldErrors.displayOrder && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.displayOrder}</p>
+              )}
             </div>
 
             <div>

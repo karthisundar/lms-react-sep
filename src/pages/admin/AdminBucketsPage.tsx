@@ -5,6 +5,7 @@ import type { Bucket, BucketCreateInput, BucketUpdateInput } from '@/types/api';
 import DataTable, { type Column } from '@/components/DataTable';
 import Modal from '@/components/Modal';
 import { PageHeader, ErrorBanner } from '@/components/ui';
+import { validateBucketFields } from '@/utils/formValidation';
 
 interface BucketFormData {
   bucketRefId: string;
@@ -37,6 +38,7 @@ export default function AdminBucketsPage() {
   const [form, setForm] = useState<BucketFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [deleteTarget, setDeleteTarget] = useState<Bucket | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -81,6 +83,7 @@ export default function AdminBucketsPage() {
       status: 1,
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
   };
@@ -95,6 +98,7 @@ export default function AdminBucketsPage() {
       status: typeof b.status === 'number' ? b.status : 1,
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
 
@@ -118,27 +122,15 @@ export default function AdminBucketsPage() {
     }
   };
 
-  const validateForm = (): string | null => {
-    const trimmedName = form.bucketName.trim();
-    if (!trimmedName) {
-      return 'Bucket Name is required and cannot be empty.';
-    }
-
-    const trimmedUrl = form.serviceUrl.trim();
-    if (!trimmedUrl) {
-      return 'Service URL is required and cannot be empty.';
-    }
-
-    return null;
-  };
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setFieldErrors({});
 
-    const validationErr = validateForm();
-    if (validationErr) {
-      setFormError(validationErr);
+    const errors = validateBucketFields(form);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setFormError(errors.bucketName || errors.serviceUrl || 'Please fix the errors indicated below.');
       return;
     }
 
@@ -388,27 +380,35 @@ export default function AdminBucketsPage() {
             </label>
             <input
               id="bucket-name"
-              className="input"
+              className={`input ${fieldErrors.bucketName ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
               value={form.bucketName}
-              onChange={(e) => setForm({ ...form, bucketName: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, bucketName: e.target.value });
+                if (fieldErrors.bucketName) setFieldErrors({ ...fieldErrors, bucketName: '' });
+              }}
               required
               placeholder="e.g. main-recordings-bucket"
               autoFocus
             />
+            {fieldErrors.bucketName && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.bucketName}</p>}
           </div>
 
           <div>
             <label className="label" htmlFor="bucket-service-url">
-              Service URL <span className="text-red-500">*</span>
+              Service URL / Base Endpoint <span className="text-red-500">*</span>
             </label>
             <input
               id="bucket-service-url"
-              className="input font-mono text-sm"
+              className={`input font-mono text-sm ${fieldErrors.serviceUrl ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
               value={form.serviceUrl}
-              onChange={(e) => setForm({ ...form, serviceUrl: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, serviceUrl: e.target.value });
+                if (fieldErrors.serviceUrl) setFieldErrors({ ...fieldErrors, serviceUrl: '' });
+              }}
               required
               placeholder="e.g. https://storage.googleapis.com/main-recordings"
             />
+            {fieldErrors.serviceUrl && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.serviceUrl}</p>}
           </div>
 
           <div>

@@ -615,3 +615,44 @@ export interface UserLessonMappingUpdateInput {
 export interface UserLessonMappingDeleteInput {
   userLessonRefId: string;
 }
+
+// Question & Answer Types (for Python Editor & Lesson assessments)
+export interface QuestionAnswerItem {
+  answerId: number;
+  answerRefId: string;
+  questionId: number;
+  answerText: string;
+  isCorrect: boolean;
+  displayOrder: number;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface QuestionItem {
+  questionId: number;
+  questionRefId: string;
+  lessonId: number;
+  questionText: string;
+  questionType: string;
+  marks: string | number;
+  negativeMarks?: string | number;
+  explanation: string | null;
+  displayOrder: number;
+  status: string;
+  answers?: QuestionAnswerItem[];
+  lesson?: {
+    lessonRefId: string;
+    lessonName?: string;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PythonSyntaxCheckResult {
+  valid: boolean;
+  message: string;
+  line?: number;
+  column?: number;
+  text?: string;
+}

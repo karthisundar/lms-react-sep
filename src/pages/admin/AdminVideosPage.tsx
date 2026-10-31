@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Film, Link2, CheckCircle2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Film, Link2, CheckCircle2, Upload, ExternalLink } from 'lucide-react';
 import { videoService, sessionMasterService, bucketMasterService } from '@/services';
 import type { Bucket, Session, Video, VideoCreateInput, VideoUpdateInput } from '@/types/api';
 import DataTable, { type Column } from '@/components/DataTable';
 import Modal from '@/components/Modal';
 import { PageHeader, ErrorBanner } from '@/components/ui';
+import { validateVideoFields } from '@/utils/formValidation';
+import { buildVideoUrl } from '@/utils/videoUtils';
 
 interface VideoFormData {
   videoRefId: string;
@@ -44,6 +46,9 @@ export default function AdminVideosPage() {
   const [form, setForm] = useState<VideoFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -122,6 +127,8 @@ export default function AdminVideosPage() {
       bucketId: defaultBucketId,
     });
     setFormError(null);
+    setFieldErrors({});
+    setUploadProgress(null);
     setSuccessMessage(null);
     setModalOpen(true);
   };
@@ -139,6 +146,8 @@ export default function AdminVideosPage() {
       bucketId: v.bucketId || '',
     });
     setFormError(null);
+    setFieldErrors({});
+    setUploadProgress(null);
     setSuccessMessage(null);
     setModalOpen(true);
 
@@ -164,35 +173,63 @@ export default function AdminVideosPage() {
     }
   };
 
-  const validateForm = (): string | null => {
-    const trimmedTitle = form.title.trim();
-    if (!trimmedTitle) {
-      return 'Title is required and cannot be empty.';
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 500 * 1024 * 1024) {
+      setFieldErrors((prev) => ({ ...prev, filename: 'Video file size cannot exceed 500MB.' }));
+      return;
     }
-    const trimmedFilename = form.filename.trim();
-    if (!trimmedFilename) {
-      return 'Filename is required and cannot be empty.';
+
+    setUploading(true);
+    setUploadProgress(`Uploading ${file.name}…`);
+    try {
+      const formData = new FormData();
+      formData.append('video', file);
+
+      const token = localStorage.getItem('access_token') || localStorage.getItem('cc_token') || '';
+      const apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3100').replace(/\/$/, '');
+      const res = await fetch(`${apiBase}/api/video/upload`, {
+        method: 'POST',
+        headers: token ? { Authorization: token } : {},
+        body: formData,
+      });
+
+      const data = await res.json();
+      const uploadedData = data?.response?.data || data?.data;
+      if (!res.ok || !uploadedData) {
+        throw new Error(data?.message || data?.response?.message || 'Video upload failed');
+      }
+
+      const relativeKey = uploadedData.relativeKey || uploadedData.fileName;
+      const cleanFilename = uploadedData.fileName || file.name;
+
+      setForm((prev) => ({
+        ...prev,
+        filename: cleanFilename,
+        url: relativeKey,
+        title: prev.title || file.name.replace(/\.[^/.]+$/, ''),
+      }));
+      setFieldErrors((prev) => ({ ...prev, filename: '' }));
+      setUploadProgress(`Uploaded: ${relativeKey}`);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Upload failed');
+      setUploadProgress(null);
+    } finally {
+      setUploading(false);
     }
-    const trimmedUrl = form.url.trim();
-    if (!trimmedUrl) {
-      return 'URL is required and cannot be empty.';
-    }
-    if (!form.sessionId) {
-      return 'Session is required. Please select a session.';
-    }
-    if (!form.bucketId) {
-      return 'Bucket is required. Please select a bucket.';
-    }
-    return null;
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setFieldErrors({});
 
-    const validationErr = validateForm();
-    if (validationErr) {
-      setFormError(validationErr);
+    const errors = validateVideoFields(form);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setFormError(errors.title || errors.filename || errors.sessionId || errors.bucketId || 'Please correct the highlighted errors.');
       return;
     }
 
@@ -201,11 +238,26 @@ export default function AdminVideosPage() {
       const isEditMode = mode === 'edit' && Boolean(form.videoRefId || editing?.videoRefId);
       const targetRefId = isEditMode ? (form.videoRefId || editing?.videoRefId || '') : '';
 
+      // Clean filename / relative key: ensure no full domain is stored for S3/CDN videos
+      let cleanUrl = form.url.trim() || form.filename.trim();
+      let cleanFilename = form.filename.trim();
+
+      const isExternal = /youtube\.com|youtu\.be|drive\.google\.com|vimeo\.com/i.test(cleanUrl);
+      if (!isExternal && (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://'))) {
+        try {
+          const parsed = new URL(cleanUrl);
+          cleanUrl = parsed.pathname.replace(/^\/+/, '');
+          if (!cleanFilename || cleanFilename.startsWith('http')) {
+            cleanFilename = cleanUrl.split('/').pop() || cleanUrl;
+          }
+        } catch {}
+      }
+
       const payload: VideoCreateInput | VideoUpdateInput = {
         videoRefId: targetRefId,
         title: form.title.trim(),
-        filename: form.filename.trim(),
-        url: form.url.trim(),
+        filename: cleanFilename,
+        url: cleanUrl,
         sessionId: form.sessionId,
         bucketId: form.bucketId,
       };
@@ -287,12 +339,33 @@ export default function AdminVideosPage() {
     },
     {
       key: 'url',
-      header: 'URL',
-      render: (v) => (
-        <span className="font-mono text-xs text-gray-600 dark:text-gray-300 break-all">
-          {v.url || '—'}
-        </span>
-      ),
+      header: 'Stored Key / Playback URL',
+      render: (v) => {
+        const storedKey = v.url || v.filename || '';
+        const playbackUrl = buildVideoUrl(storedKey);
+        return (
+          <div className="space-y-0.5 max-w-xs">
+            <span className="font-mono text-xs font-semibold text-gray-800 dark:text-gray-200 break-all">
+              {storedKey || '—'}
+            </span>
+            {playbackUrl && (
+              <p className="flex items-center gap-1 font-mono text-[11px] text-brand-600 dark:text-brand-400 break-all">
+                <Link2 className="h-3 w-3 shrink-0" />
+                <a
+                  href={playbackUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:underline inline-flex items-center gap-0.5"
+                  title="Open constructed playback URL"
+                >
+                  <span>{playbackUrl.length > 45 ? `${playbackUrl.slice(0, 45)}…` : playbackUrl}</span>
+                  <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                </a>
+              </p>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'sessionId',
@@ -418,40 +491,69 @@ export default function AdminVideosPage() {
               Video Title <span className="text-red-500">*</span>
             </label>
             <input
-              className="input"
+              className={`input ${fieldErrors.title ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
               value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, title: e.target.value });
+                if (fieldErrors.title) setFieldErrors({ ...fieldErrors, title: '' });
+              }}
               required
               placeholder="e.g. Intro to TypeScript — Recording"
             />
+            {fieldErrors.title && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.title}</p>}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
+          <div>
+            <div className="flex items-center justify-between">
               <label className="label">
-                Filename <span className="text-red-500">*</span>
+                Stored Filename or Relative Object Key <span className="text-red-500">*</span>
               </label>
-              <input
-                className="input font-mono text-sm"
-                value={form.filename}
-                onChange={(e) => setForm({ ...form, filename: e.target.value })}
-                required
-                placeholder="e.g. intro-ts.mp4"
-              />
-            </div>
-            <div>
-              <label className="label">
-                Video URL <span className="text-red-500">*</span>
+              <label className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
+                <Upload className="h-3.5 w-3.5" />
+                <span>Upload File</span>
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                />
               </label>
-              <input
-                className="input font-mono text-sm"
-                value={form.url}
-                onChange={(e) => setForm({ ...form, url: e.target.value })}
-                required
-                placeholder="https://…/video.mp4"
-              />
             </div>
+            <input
+              className={`input font-mono text-sm ${fieldErrors.filename ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
+              value={form.url || form.filename}
+              onChange={(e) => {
+                const val = e.target.value;
+                setForm({ ...form, url: val, filename: val.split('/').pop() || val });
+                if (fieldErrors.filename) setFieldErrors({ ...fieldErrors, filename: '' });
+              }}
+              required
+              placeholder="e.g. lesson-01.mp4, full-stack/module-01/lesson-01.mp4, or YouTube URL"
+            />
+            {fieldErrors.filename && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.filename}</p>}
+            {uploadProgress && (
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-brand-600 dark:text-brand-400">
+                {uploading && <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />}
+                <span>{uploadProgress}</span>
+              </p>
+            )}
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Only the filename or relative object key is stored in the database. Full S3/CDN URLs are stripped automatically.
+            </p>
           </div>
+
+          {Boolean(form.url || form.filename) && (
+            <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-3 dark:border-brand-900/50 dark:bg-brand-950/20">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-900 dark:text-brand-200">
+                <Film className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                <span>Constructed Playback URL Preview:</span>
+              </div>
+              <p className="mt-1 font-mono text-xs text-brand-700 dark:text-brand-300 break-all">
+                {buildVideoUrl(form.url || form.filename)}
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -459,9 +561,12 @@ export default function AdminVideosPage() {
                 Session <span className="text-red-500">*</span>
               </label>
               <select
-                className="input"
+                className={`input ${fieldErrors.sessionId ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
                 value={form.sessionId}
-                onChange={(e) => setForm({ ...form, sessionId: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, sessionId: e.target.value });
+                  if (fieldErrors.sessionId) setFieldErrors({ ...fieldErrors, sessionId: '' });
+                }}
                 required
               >
                 <option value="">Select session…</option>
@@ -474,15 +579,19 @@ export default function AdminVideosPage() {
                   );
                 })}
               </select>
+              {fieldErrors.sessionId && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.sessionId}</p>}
             </div>
             <div>
               <label className="label">
                 Bucket <span className="text-red-500">*</span>
               </label>
               <select
-                className="input"
+                className={`input ${fieldErrors.bucketId ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
                 value={form.bucketId}
-                onChange={(e) => setForm({ ...form, bucketId: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, bucketId: e.target.value });
+                  if (fieldErrors.bucketId) setFieldErrors({ ...fieldErrors, bucketId: '' });
+                }}
                 required
               >
                 <option value="">Select bucket…</option>
@@ -495,12 +604,8 @@ export default function AdminVideosPage() {
                   );
                 })}
               </select>
+              {fieldErrors.bucketId && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.bucketId}</p>}
             </div>
-          </div>
-
-          <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
-            <Link2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <p>Provide a direct or signed URL. The backend manages video streaming through the mapped session and bucket.</p>
           </div>
 
           <button type="submit" className="hidden" />

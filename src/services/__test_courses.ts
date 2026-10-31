@@ -1,2 +1,0 @@
-// Temporary test placeholder
-export {};

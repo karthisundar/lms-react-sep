@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, Pencil, Trash2, BookOpen, CheckCircle2, Eye, Calendar, Tag, FileText } from 'lucide-react';
+import { Plus, Pencil, Trash2, BookOpen, CheckCircle2, Eye } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { courseMasterService } from '@/services';
 import type { Course, CourseCreateInput, CourseUpdateInput, CourseStatus } from '@/types/api';
 import DataTable, { type Column } from '@/components/DataTable';
 import Modal from '@/components/Modal';
 import { PageHeader, ErrorBanner, StatusBadge } from '@/components/ui';
+import { validateCourseFields } from '@/utils/formValidation';
 
 interface CourseFormData {
   courseRefId: string;
@@ -48,6 +49,7 @@ export default function AdminCoursesPage() {
   const [form, setForm] = useState<CourseFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // View details modal state
   const [viewingTarget, setViewingTarget] = useState<Course | null>(null);
@@ -100,6 +102,7 @@ export default function AdminCoursesPage() {
       status: 'draft',
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
   };
@@ -114,6 +117,7 @@ export default function AdminCoursesPage() {
       status: course.status || 'draft',
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
 
@@ -150,21 +154,18 @@ export default function AdminCoursesPage() {
     }
   };
 
-  const validateForm = (): string | null => {
-    const trimmedName = form.courseName.trim();
-    if (!trimmedName) {
-      return 'Course Name is required and cannot be empty.';
-    }
-    return null;
-  };
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setFieldErrors({});
 
-    const validationErr = validateForm();
-    if (validationErr) {
-      setFormError(validationErr);
+    const validationErrors = validateCourseFields({
+      courseName: form.courseName,
+      description: form.description,
+    });
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      setFormError(Object.values(validationErrors)[0]);
       return;
     }
 
@@ -437,13 +438,18 @@ export default function AdminCoursesPage() {
             </label>
             <input
               id="course-name"
-              className="input"
+              className={`input ${fieldErrors.courseName ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.courseName}
-              onChange={(e) => setForm({ ...form, courseName: e.target.value })}
-              required
+              onChange={(e) => {
+                setForm({ ...form, courseName: e.target.value });
+                if (fieldErrors.courseName) setFieldErrors({ ...fieldErrors, courseName: '' });
+              }}
               placeholder="e.g. Node JS Fundamentals"
               autoFocus
             />
+            {fieldErrors.courseName && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.courseName}</p>
+            )}
           </div>
 
           <div>
@@ -452,12 +458,18 @@ export default function AdminCoursesPage() {
             </label>
             <textarea
               id="course-description"
-              className="input min-h-[96px] py-2"
+              className={`input min-h-[96px] py-2 ${fieldErrors.description ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, description: e.target.value });
+                if (fieldErrors.description) setFieldErrors({ ...fieldErrors, description: '' });
+              }}
               placeholder="Course overview, syllabus, or learning outcomes..."
               rows={3}
             />
+            {fieldErrors.description && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.description}</p>
+            )}
           </div>
 
           <div>

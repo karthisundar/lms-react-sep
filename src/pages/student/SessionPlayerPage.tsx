@@ -8,12 +8,14 @@ import {
   Info,
   ShieldCheck,
   Tag,
+  Terminal,
 } from 'lucide-react';
 import { sessionMasterService, videoService } from '@/services';
 import type { Session, Video } from '@/types/api';
 import { useAuth } from '@/context/AuthContext';
 import VideoPlayer from '@/components/VideoPlayer';
 import { Spinner, ErrorBanner, StatusBadge, EmptyState } from '@/components/ui';
+import { buildVideoUrl } from '@/utils/videoUtils';
 
 export default function SessionPlayerPage() {
   const { id } = useParams<{ id: string }>();
@@ -95,7 +97,7 @@ export default function SessionPlayerPage() {
 
   const sessionName = session?.sessionName || session?.name || 'Session Details';
   const sessionDate = session?.startDate || session?.date;
-  const playbackUrl = activeVideo?.url || activeVideo?.signedUrl || '';
+  const playbackUrl = buildVideoUrl(activeVideo?.url || activeVideo?.signedUrl || activeVideo?.filename || '');
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -148,9 +150,23 @@ export default function SessionPlayerPage() {
             )}
           </div>
 
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-            {sessionName}
-          </h1>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+              {sessionName}
+            </h1>
+
+            {user?.role === 'user' && (
+              <button
+                type="button"
+                onClick={() => navigate('/python-editor')}
+                className="btn-primary py-1.5 px-3.5 text-xs font-semibold inline-flex items-center gap-1.5 shadow-sm shadow-brand-500/20"
+                title="Launch Python Code Editor"
+              >
+                <Terminal className="h-4 w-4" />
+                <span>Open in Python Editor</span>
+              </button>
+            )}
+          </div>
 
           {session.description && (
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">

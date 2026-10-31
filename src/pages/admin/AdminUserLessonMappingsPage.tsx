@@ -6,7 +6,6 @@ import {
   Trash2,
   CheckCircle2,
   Eye,
-  Link2,
   Users,
   GraduationCap,
   RotateCcw,

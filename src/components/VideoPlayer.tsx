@@ -22,6 +22,7 @@ import {
   detectVideoSource,
   getYouTubeEmbedUrl,
   sanitizeVideoUrlForLogging,
+  buildVideoUrl,
 } from "@/utils/videoUtils";
 
 export interface VideoPlayerProps {
@@ -101,8 +102,9 @@ export default function VideoPlayer({
   poster,
   title,
 }: VideoPlayerProps) {
-  // 1. Resolve video URL, title, and reference ID
-  const videoUrl = (video?.url || video?.signedUrl || src || "").trim();
+  // 1. Resolve video URL, title, and reference ID using centralized buildVideoUrl
+  const rawUrlOrFileName = (video?.url || video?.signedUrl || src || video?.filename || "").trim();
+  const videoUrl = useMemo(() => buildVideoUrl(rawUrlOrFileName), [rawUrlOrFileName]);
   const displayTitle = title || video?.title || "Video Player";
 
   // Universal Source Detection

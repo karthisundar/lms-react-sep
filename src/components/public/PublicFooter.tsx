@@ -1,6 +1,6 @@
 // src/components/public/PublicFooter.tsx
 import { Link } from 'react-router-dom';
-import { Code as Code2, Mail, Phone, MapPin, ShieldCheck, Award, BookOpen, ExternalLink, Heart } from 'lucide-react';
+import { Code as Code2, Mail, Phone, MapPin, ShieldCheck, Award, ExternalLink } from 'lucide-react';
 import { coursesData } from '@/data/coursesData';
 
 export default function PublicFooter() {

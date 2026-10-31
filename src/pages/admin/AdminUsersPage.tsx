@@ -5,6 +5,7 @@ import type { Role, User, UserCreateInput, UserFormMode, UserUpdateInput } from 
 import DataTable, { type Column } from '@/components/DataTable';
 import Modal from '@/components/Modal';
 import { PageHeader, ErrorBanner } from '@/components/ui';
+import { validateUserFields, normalizeEmail } from '@/utils/formValidation';
 
 interface UserFormData {
   name: string;
@@ -26,8 +27,6 @@ const emptyForm: UserFormData = {
   role: 'user',
 };
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 export default function AdminUsersPage() {
   const [rows, setRows] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
@@ -46,6 +45,7 @@ export default function AdminUsersPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -78,6 +78,7 @@ export default function AdminUsersPage() {
     });
     setShowPassword(false);
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
   };
@@ -96,56 +97,34 @@ export default function AdminUsersPage() {
     });
     setShowPassword(false);
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
-  };
-
-  const validateForm = (): string | null => {
-    const trimmedName = form.name.trim();
-    if (!trimmedName) {
-      return 'Name is required and cannot be empty.';
-    }
-    const trimmedEmail = form.email.trim();
-    if (!trimmedEmail) {
-      return 'Email is required.';
-    }
-    if (!EMAIL_REGEX.test(trimmedEmail)) {
-      return 'Please enter a valid email address.';
-    }
-    const isCreateMode = mode === 'create' || form.user_ref_id === '';
-    if (isCreateMode) {
-      if (!form.password) {
-        return 'Password is required when creating a new user.';
-      }
-      if (form.password.length < 4) {
-        return 'Password must be at least 4 characters long.';
-      }
-    } else if (form.password && form.password.length < 4) {
-      return 'New password must be at least 4 characters long.';
-    }
-    return null;
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setFieldErrors({});
 
-    const validationErr = validateForm();
-    if (validationErr) {
-      setFormError(validationErr);
+    const errors = validateUserFields(form, mode, rows);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setFormError(errors.email || errors.name || errors.password || errors.phoneNumber || 'Please correct the highlighted errors.');
       return;
     }
 
     setSaving(true);
     try {
       const isEditMode = mode === 'edit' && Boolean(form.user_ref_id || editing?.user_ref_id);
+      const cleanEmail = normalizeEmail(form.email);
       if (isEditMode) {
         // Edit mode: MUST send selected user's user_ref_id (never user_id)
         // If password is empty, do NOT send/change password
         const targetRefId = form.user_ref_id || editing?.user_ref_id || '';
         const body: UserUpdateInput = {
           name: form.name.trim(),
-          email: form.email.trim().toLowerCase(),
+          email: cleanEmail,
           phoneNumber: form.phoneNumber.trim(),
           user_ref_id: targetRefId,
           is_active: form.is_active,
@@ -160,7 +139,7 @@ export default function AdminUsersPage() {
         const encodedPassword = btoa(form.password.trim());
         const body: UserCreateInput = {
           name: form.name.trim(),
-          email: form.email.trim().toLowerCase(),
+          email: cleanEmail,
           password: encodedPassword,
           phoneNumber: form.phoneNumber.trim(),
           user_ref_id: '',
@@ -172,8 +151,18 @@ export default function AdminUsersPage() {
       }
       setModalOpen(false);
       load();
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Save failed');
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        err?.code === 'EMAIL_ALREADY_EXISTS' ||
+        msg.toLowerCase().includes('already registered') ||
+        msg.toLowerCase().includes('already exists')
+      ) {
+        setFieldErrors((prev) => ({ ...prev, email: 'This email address is already registered.' }));
+        setFormError('This email address is already registered.');
+      } else {
+        setFormError(msg || 'Save failed');
+      }
     } finally {
       setSaving(false);
     }
@@ -405,13 +394,17 @@ export default function AdminUsersPage() {
             </label>
             <input
               id="user-name"
-              className="input"
+              className={`input ${fieldErrors.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, name: e.target.value });
+                if (fieldErrors.name) setFieldErrors({ ...fieldErrors, name: '' });
+              }}
               required
               placeholder="Ada Lovelace"
               autoFocus
             />
+            {fieldErrors.name && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.name}</p>}
           </div>
 
           <div>
@@ -421,12 +414,16 @@ export default function AdminUsersPage() {
             <input
               id="user-email"
               type="email"
-              className="input"
+              className={`input ${fieldErrors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, email: e.target.value });
+                if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: '' });
+              }}
               required
               placeholder="ada@example.com"
             />
+            {fieldErrors.email && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.email}</p>}
           </div>
 
           <div>
@@ -436,11 +433,15 @@ export default function AdminUsersPage() {
             <input
               id="user-phone"
               type="tel"
-              className="input"
+              className={`input ${fieldErrors.phoneNumber ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
               value={form.phoneNumber}
-              onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
-              placeholder="9876543210"
+              onChange={(e) => {
+                setForm({ ...form, phoneNumber: e.target.value });
+                if (fieldErrors.phoneNumber) setFieldErrors({ ...fieldErrors, phoneNumber: '' });
+              }}
+              placeholder="+1 234 567 8900"
             />
+            {fieldErrors.phoneNumber && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.phoneNumber}</p>}
           </div>
 
           <div>
@@ -452,9 +453,12 @@ export default function AdminUsersPage() {
               <input
                 id="user-password"
                 type={showPassword ? 'text' : 'password'}
-                className="input pr-10"
+                className={`input pr-10 ${fieldErrors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}
                 value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, password: e.target.value });
+                  if (fieldErrors.password) setFieldErrors({ ...fieldErrors, password: '' });
+                }}
                 required={mode !== 'edit'}
                 placeholder={mode === 'edit' ? 'Leave blank to keep existing password' : '••••••••'}
                 autoComplete="new-password"
@@ -468,10 +472,11 @@ export default function AdminUsersPage() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            {fieldErrors.password && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.password}</p>}
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {mode === 'edit'
-                ? 'Only enter a password if you wish to change it. Passwords are automatically encoded.'
-                : 'Password will be encoded with btoa() before transmission.'}
+                ? 'Only enter a password if you wish to change it. Minimum 6 characters.'
+                : 'Password will be securely encrypted. Minimum 6 characters.'}
             </p>
           </div>
 

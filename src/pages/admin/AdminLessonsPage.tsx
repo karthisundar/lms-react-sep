@@ -7,6 +7,7 @@ import type { Lesson, LessonCreateInput, LessonUpdateInput, LessonStatus, Module
 import DataTable, { type Column } from '@/components/DataTable';
 import Modal from '@/components/Modal';
 import { PageHeader, ErrorBanner, StatusBadge } from '@/components/ui';
+import { validateLessonFields } from '@/utils/formValidation';
 
 interface LessonFormData {
   lessonRefId: string;
@@ -64,6 +65,7 @@ export default function AdminLessonsPage() {
   const [form, setForm] = useState<LessonFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // View details modal state
   const [viewingTarget, setViewingTarget] = useState<Lesson | null>(null);
@@ -172,6 +174,7 @@ export default function AdminLessonsPage() {
       status: 'draft',
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
   };
@@ -190,6 +193,7 @@ export default function AdminLessonsPage() {
       status: lesson.status || 'draft',
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
 
@@ -230,28 +234,21 @@ export default function AdminLessonsPage() {
     }
   };
 
-  const validateForm = (): string | null => {
-    if (!form.moduleRefId.trim()) {
-      return 'Module is required. Please select a module.';
-    }
-    const trimmedName = form.lessonName.trim();
-    if (!trimmedName) {
-      return 'Lesson Name is required and cannot be empty.';
-    }
-    const order = Number(form.displayOrder);
-    if (isNaN(order) || order < 1) {
-      return 'Display Order must be a positive number greater than 0.';
-    }
-    return null;
-  };
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setFieldErrors({});
 
-    const validationErr = validateForm();
-    if (validationErr) {
-      setFormError(validationErr);
+    const validationErrors = validateLessonFields({
+      moduleRefId: form.moduleRefId,
+      lessonName: form.lessonName,
+      displayOrder: form.displayOrder,
+      description: form.description,
+      notes: form.notes,
+    });
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      setFormError(Object.values(validationErrors)[0]);
       return;
     }
 
@@ -600,10 +597,12 @@ export default function AdminLessonsPage() {
             </label>
             <select
               id="lesson-module"
-              className="input"
+              className={`input ${fieldErrors.moduleRefId ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.moduleRefId}
-              onChange={(e) => setForm({ ...form, moduleRefId: e.target.value })}
-              required
+              onChange={(e) => {
+                setForm({ ...form, moduleRefId: e.target.value });
+                if (fieldErrors.moduleRefId) setFieldErrors({ ...fieldErrors, moduleRefId: '' });
+              }}
               disabled={modulesLoading}
             >
               <option value="" disabled>
@@ -615,6 +614,9 @@ export default function AdminLessonsPage() {
                 </option>
               ))}
             </select>
+            {fieldErrors.moduleRefId && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.moduleRefId}</p>
+            )}
             {modules.length === 0 && !modulesLoading && (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                 No modules available. Please create a module in Module Master first.
@@ -628,13 +630,18 @@ export default function AdminLessonsPage() {
             </label>
             <input
               id="lesson-name"
-              className="input"
+              className={`input ${fieldErrors.lessonName ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.lessonName}
-              onChange={(e) => setForm({ ...form, lessonName: e.target.value })}
-              required
+              onChange={(e) => {
+                setForm({ ...form, lessonName: e.target.value });
+                if (fieldErrors.lessonName) setFieldErrors({ ...fieldErrors, lessonName: '' });
+              }}
               placeholder="e.g. Introduction to Node.js"
               autoFocus
             />
+            {fieldErrors.lessonName && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.lessonName}</p>
+            )}
           </div>
 
           <div>
@@ -663,12 +670,18 @@ export default function AdminLessonsPage() {
             </label>
             <textarea
               id="lesson-description"
-              className="input min-h-[72px] py-2"
+              className={`input min-h-[72px] py-2 ${fieldErrors.description ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, description: e.target.value });
+                if (fieldErrors.description) setFieldErrors({ ...fieldErrors, description: '' });
+              }}
               placeholder="Overview or objectives for this lesson..."
               rows={2}
             />
+            {fieldErrors.description && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.description}</p>
+            )}
           </div>
 
           <div>
@@ -677,12 +690,18 @@ export default function AdminLessonsPage() {
             </label>
             <textarea
               id="lesson-notes"
-              className="input min-h-[72px] py-2 font-mono text-xs"
+              className={`input min-h-[72px] py-2 font-mono text-xs ${fieldErrors.notes ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, notes: e.target.value });
+                if (fieldErrors.notes) setFieldErrors({ ...fieldErrors, notes: '' });
+              }}
               placeholder="Reading materials, commands, links, or instructions..."
               rows={2}
             />
+            {fieldErrors.notes && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.notes}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -694,11 +713,16 @@ export default function AdminLessonsPage() {
                 id="lesson-display-order"
                 type="number"
                 min={1}
-                className="input"
+                className={`input ${fieldErrors.displayOrder ? 'border-red-500 focus:ring-red-500' : ''}`}
                 value={form.displayOrder}
-                onChange={(e) => setForm({ ...form, displayOrder: Math.max(1, parseInt(e.target.value) || 1) })}
-                required
+                onChange={(e) => {
+                  setForm({ ...form, displayOrder: Math.max(1, parseInt(e.target.value) || 1) });
+                  if (fieldErrors.displayOrder) setFieldErrors({ ...fieldErrors, displayOrder: '' });
+                }}
               />
+              {fieldErrors.displayOrder && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.displayOrder}</p>
+              )}
             </div>
 
             <div>

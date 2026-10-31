@@ -7,6 +7,7 @@ import type { Session, SessionCreateInput, SessionUpdateInput } from '@/types/ap
 import DataTable, { type Column } from '@/components/DataTable';
 import Modal from '@/components/Modal';
 import { PageHeader, ErrorBanner, StatusBadge } from '@/components/ui';
+import { validateSessionFields } from '@/utils/formValidation';
 
 interface SessionFormData {
   sessionRefId: string;
@@ -54,6 +55,7 @@ export default function AdminSessionsPage({ initialMode }: AdminSessionsPageProp
   const [form, setForm] = useState<SessionFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -125,6 +127,7 @@ export default function AdminSessionsPage({ initialMode }: AdminSessionsPageProp
       status: 'draft',
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
   };
@@ -142,6 +145,7 @@ export default function AdminSessionsPage({ initialMode }: AdminSessionsPageProp
       status: s.status || 'draft',
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
 
@@ -167,24 +171,19 @@ export default function AdminSessionsPage({ initialMode }: AdminSessionsPageProp
     }
   };
 
-  const validateForm = (): string | null => {
-    const trimmedName = form.name.trim();
-    if (!trimmedName) {
-      return 'Session Name is required and cannot be empty.';
-    }
-    if (!form.date) {
-      return 'Date is required.';
-    }
-    return null;
-  };
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setFieldErrors({});
 
-    const validationErr = validateForm();
-    if (validationErr) {
-      setFormError(validationErr);
+    const validationErrors = validateSessionFields({
+      sessionName: form.name,
+      sessionDate: form.date,
+      description: form.description,
+    });
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      setFormError(Object.values(validationErrors)[0]);
       return;
     }
 
@@ -454,22 +453,33 @@ export default function AdminSessionsPage({ initialMode }: AdminSessionsPageProp
               Session Name <span className="text-red-500">*</span>
             </label>
             <input
-              className="input"
+              className={`input ${fieldErrors.sessionName ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
+              onChange={(e) => {
+                setForm({ ...form, name: e.target.value });
+                if (fieldErrors.sessionName) setFieldErrors({ ...fieldErrors, sessionName: '' });
+              }}
               placeholder="e.g. Intro to TypeScript"
             />
+            {fieldErrors.sessionName && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.sessionName}</p>
+            )}
           </div>
 
           <div>
             <label className="label">Description</label>
             <textarea
-              className="input min-h-[80px] resize-y"
+              className={`input min-h-[80px] resize-y ${fieldErrors.description ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, description: e.target.value });
+                if (fieldErrors.description) setFieldErrors({ ...fieldErrors, description: '' });
+              }}
               placeholder="What this session covers…"
             />
+            {fieldErrors.description && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.description}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -479,11 +489,16 @@ export default function AdminSessionsPage({ initialMode }: AdminSessionsPageProp
               </label>
               <input
                 type="date"
-                className="input"
+                className={`input ${fieldErrors.sessionDate ? 'border-red-500 focus:ring-red-500' : ''}`}
                 value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-                required
+                onChange={(e) => {
+                  setForm({ ...form, date: e.target.value });
+                  if (fieldErrors.sessionDate) setFieldErrors({ ...fieldErrors, sessionDate: '' });
+                }}
               />
+              {fieldErrors.sessionDate && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.sessionDate}</p>
+              )}
             </div>
 
             <div>

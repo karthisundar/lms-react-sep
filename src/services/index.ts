@@ -59,29 +59,20 @@ import {
   bucketMasterApi,
   clearSession,
   courseMasterApi,
-  coursesApi,
   getStoredUser,
   getToken,
-  mappingsApi,
   moduleMasterApi,
-  modulesApi,
   lessonMasterApi,
-  lessonsApi,
   lessonVideoMappingApi,
-  lessonVideoMappingsApi,
-  lessonNoteApi,
   lessonNotesApi,
   profileApi,
   sessionMasterApi,
-  sessionsApi,
   setSession,
   studentApi,
   userSessionMappingApi,
   userLessonMappingApi,
-  userLessonMappingsApi,
   usersApi,
   videoMasterApi,
-  videosApi,
 } from './api';
 import { demoApi } from './demoApi';
 
@@ -643,6 +634,8 @@ export { lessonService, lessonMasterService } from './lessonService';
 export { lessonVideoMappingService, mappingLessonVideoService } from './lessonVideoMappingService';
 export { lessonNotesService, lessonNoteService } from './lessonNotesService';
 export { userLessonMappingService, userLessonMappingsService } from './userLessonMappingService';
+export { questionService } from './questionService';
+export { questionApi } from './api';
 
 
 

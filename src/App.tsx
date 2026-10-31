@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AppLayout from '@/components/AppLayout';
@@ -12,6 +12,7 @@ import CourseDetailPage from '@/pages/public/CourseDetailPage';
 import ProfilePage from '@/pages/student/ProfilePage';
 import SessionPlayerPage from '@/pages/student/SessionPlayerPage';
 import SessionsRoutingPage from '@/pages/SessionsRoutingPage';
+import PythonEditorPage from '@/pages/student/PythonEditorPage';
 
 import AdminDashboard from '@/pages/admin/AdminDashboard';
 import AdminUsersPage from '@/pages/admin/AdminUsersPage';
@@ -25,6 +26,7 @@ import AdminMappingsPage from '@/pages/admin/AdminMappingsPage';
 import AdminLessonVideoMappingsPage from '@/pages/admin/AdminLessonVideoMappingsPage';
 import AdminLessonNotesPage from '@/pages/admin/AdminLessonNotesPage';
 import AdminUserLessonMappingsPage from '@/pages/admin/AdminUserLessonMappingsPage';
+import AdminContactEnquiriesPage from '@/pages/admin/AdminContactEnquiriesPage';
 
 export default function App() {
   return (
@@ -50,6 +52,17 @@ export default function App() {
               <Route path="/my-sessions" element={<Navigate to="/sessions" replace />} />
               <Route path="/sessions/:id" element={<SessionPlayerPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+            </Route>
+
+            {/* Student/User-only routes (strictly restricted to User role) */}
+            <Route
+              element={
+                <ProtectedRoute roles={['user']}>
+                  <AppLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="/python-editor" element={<PythonEditorPage />} />
             </Route>
 
             {/* Admin-only routes */}
@@ -78,6 +91,7 @@ export default function App() {
               <Route path="/sessions/edit/:id" element={<AdminSessionsPage initialMode="edit" />} />
               <Route path="/admin/buckets" element={<AdminBucketsPage />} />
               <Route path="/admin/videos" element={<AdminVideosPage />} />
+              <Route path="/admin/enquiries" element={<AdminContactEnquiriesPage />} />
               <Route path="/admin/mappings" element={<AdminMappingsPage />} />
               <Route path="/mappings" element={<AdminMappingsPage />} />
               <Route path="/mappings/create" element={<AdminMappingsPage initialMode="create" />} />

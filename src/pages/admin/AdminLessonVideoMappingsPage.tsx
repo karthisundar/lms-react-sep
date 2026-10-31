@@ -8,7 +8,6 @@ import {
   Eye,
   Film,
   GraduationCap,
-  Link2,
   RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';

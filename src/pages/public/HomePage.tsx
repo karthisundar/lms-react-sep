@@ -1,46 +1,31 @@
 // src/pages/public/HomePage.tsx
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Code as Code2,
   Sparkles,
   ArrowRight,
   Brain,
   ShieldCheck,
   Cloud,
   Database,
-  Cpu,
   Layers,
-  GraduationCap,
   Award,
   Users,
-  CheckCircle2,
-  Play,
   Terminal,
-  BookOpen,
   Briefcase,
   Clock,
   Star,
-  Quote,
 } from 'lucide-react';
 import PublicHeader from '@/components/public/PublicHeader';
 import PublicFooter from '@/components/public/PublicFooter';
 import CourseCard from '@/components/public/CourseCard';
-import { coursesData, courseCategories, getFeaturedCourses } from '@/data/coursesData';
+import EnquiryPopupModal from '@/components/EnquiryPopupModal';
+import { getFeaturedCourses } from '@/data/coursesData';
 import { useAuth } from '@/context/AuthContext';
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const featuredCourses = getFeaturedCourses();
-
-  // Category selection for the interactive category filter
-  const [selectedCategorySlug, setSelectedCategorySlug] = useState('all');
-
-  const filteredCourses =
-    selectedCategorySlug === 'all'
-      ? coursesData
-      : coursesData.filter((c) => c.categorySlug === selectedCategorySlug);
 
   const categories = [
     {
@@ -579,6 +564,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Scroll-triggered enquiry popup (triggers at 40% scroll depth) */}
+      <EnquiryPopupModal scrollThreshold={0.40} source="homepage" />
 
       <PublicFooter />
     </div>

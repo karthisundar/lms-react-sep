@@ -29,7 +29,6 @@ import type {
   LessonNotes,
   LessonNotesCreateInput,
   LessonNotesDeleteInput,
-  LessonNotesStatus,
   LessonNotesUpdateInput,
   ListParams,
   Module,
@@ -54,7 +53,6 @@ import type {
   UserLessonMapping,
   UserLessonMappingCreateInput,
   UserLessonMappingDeleteInput,
-  UserLessonMappingStatus,
   UserLessonMappingUpdateInput,
   UserUpdateInput,
   Video,
@@ -64,6 +62,8 @@ import type {
   VideoProgressApiResponse,
   VideoProgressCreateInput,
   VideoUpdateInput,
+  QuestionItem,
+  PythonSyntaxCheckResult,
 } from '@/types/api';
 import { ADMIN_ROLE_ID, USER_ROLE_ID } from '@/types/api';
 
@@ -265,15 +265,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   } catch {
     return text as unknown as T;
   }
-}
-
-function withQuery(params: ListParams = {}): string {
-  const sp = new URLSearchParams();
-  if (params.search) sp.set('search', params.search);
-  if (params.page) sp.set('page', String(params.page));
-  if (params.pageSize) sp.set('pageSize', String(params.pageSize));
-  const q = sp.toString();
-  return q ? `?${q}` : '';
 }
 
 let clientLabelCache: Record<string, ClientLabelItem> | null = null;
@@ -2485,6 +2476,69 @@ export const userLessonMappingApi = {
 };
 
 export const userLessonMappingsApi = userLessonMappingApi;
+
+// Question & Python Editor API
+const QUESTION_BASE_URL = '/question';
+
+export const questionApi = {
+  getAllQuestions: async (params: { page?: number; limit?: number; lessonRefId?: string; status?: string } = {}): Promise<{
+    row: QuestionItem[];
+    totalItem: number;
+    totalPage: number;
+    currentPage: number;
+  }> => {
+    const q = new URLSearchParams();
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit) q.append('limit', String(params.limit));
+    if (params.lessonRefId) q.append('lessonRefId', params.lessonRefId);
+    if (params.status) q.append('status', params.status);
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    const res = await request<any>(`${QUESTION_BASE_URL}/getAllQuestions${qs}`);
+    const data = res?.response?.data ?? res?.data ?? res;
+    return {
+      row: Array.isArray(data?.row) ? data.row : (Array.isArray(data) ? data : []),
+      totalItem: data?.totalItem ?? (Array.isArray(data?.row) ? data.row.length : 0),
+      totalPage: data?.totalPage ?? 1,
+      currentPage: data?.currentPage ?? 1,
+    };
+  },
+
+  getEditorQuestions: async (params: { page?: number; limit?: number; lessonRefId?: string } = {}): Promise<{
+    row: QuestionItem[];
+    totalItem: number;
+    totalPage: number;
+    currentPage: number;
+  }> => {
+    const q = new URLSearchParams();
+    if (params.page) q.append('page', String(params.page));
+    if (params.limit) q.append('limit', String(params.limit));
+    if (params.lessonRefId) q.append('lessonRefId', params.lessonRefId);
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    const res = await request<any>(`${QUESTION_BASE_URL}/getEditorQuestions${qs}`);
+    const data = res?.response?.data ?? res?.data ?? res;
+    return {
+      row: Array.isArray(data?.row) ? data.row : (Array.isArray(data) ? data : []),
+      totalItem: data?.totalItem ?? (Array.isArray(data?.row) ? data.row.length : 0),
+      totalPage: data?.totalPage ?? 1,
+      currentPage: data?.currentPage ?? 1,
+    };
+  },
+
+  getQuestionByRefId: async (questionRefId: string): Promise<QuestionItem> => {
+    const res = await request<any>(`${QUESTION_BASE_URL}/getQuestionByRefId?questionRefId=${encodeURIComponent(questionRefId)}`);
+    return (res?.response?.data ?? res?.data ?? res) as QuestionItem;
+  },
+
+  checkSyntax: async (code: string): Promise<PythonSyntaxCheckResult> => {
+    const res = await request<any>(`${QUESTION_BASE_URL}/checkSyntax`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+    return (res?.response?.data ?? res?.data ?? res) as PythonSyntaxCheckResult;
+  },
+};
+
+export const questionsApi = questionApi;
 
 
 

@@ -7,6 +7,7 @@ import { api } from '@/services';
 import { demoCredentials } from '@/services/demoApi';
 import { HttpError } from '@/services/api';
 import type { ApiErrorResponse } from '@/types/api';
+import { validateLoginFields, normalizeEmail } from '@/utils/formValidation';
 
 export default function LoginPage() {
   const { login, loading } = useAuth();
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Pre-fetch client labels on mount so error/success messages can be resolved dynamically
   useEffect(() => {
@@ -23,37 +25,24 @@ export default function LoginPage() {
     });
   }, []);
 
-  const validateForm = (): boolean => {
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
-      setError('Please enter your email address.');
-      return false;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(trimmedEmail)) {
-      setError('Please enter a valid email address.');
-      return false;
-    }
-    if (!password) {
-      setError('Please enter your password.');
-      return false;
-    }
-    return true;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return; // Prevent duplicate API requests
 
     setError(null);
+    setFieldErrors({});
 
-    if (!validateForm()) {
+    const normalized = normalizeEmail(email);
+    const errors = validateLoginFields({ email: normalized, password });
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setError(Object.values(errors)[0]);
       return;
     }
 
     try {
       const payload = {
-        email: email.trim(),
+        email: normalized,
         password: btoa(password),
       };
 
@@ -157,16 +146,19 @@ export default function LoginPage() {
               <input
                 id="email"
                 type="email"
-                required
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
                   if (error) setError(null);
+                  if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: '' });
                 }}
                 placeholder="you@example.com"
-                className="input"
+                className={`input ${fieldErrors.email ? 'border-red-500 focus:ring-red-500' : ''}`}
                 autoComplete="email"
               />
+              {fieldErrors.email && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.email}</p>
+              )}
             </div>
             <div>
               <label htmlFor="password" className="label">Password</label>
@@ -174,14 +166,14 @@ export default function LoginPage() {
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  required
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
                     if (error) setError(null);
+                    if (fieldErrors.password) setFieldErrors({ ...fieldErrors, password: '' });
                   }}
                   placeholder="••••••••"
-                  className="input pr-10"
+                  className={`input pr-10 ${fieldErrors.password ? 'border-red-500 focus:ring-red-500' : ''}`}
                   autoComplete="current-password"
                 />
                 <button
@@ -193,6 +185,9 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {fieldErrors.password && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.password}</p>
+              )}
             </div>
 
             <button type="submit" disabled={loading} className="btn-primary w-full">

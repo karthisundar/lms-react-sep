@@ -13,6 +13,7 @@ import type {
 import DataTable, { type Column } from '@/components/DataTable';
 import Modal from '@/components/Modal';
 import { PageHeader, ErrorBanner, StatusBadge } from '@/components/ui';
+import { validateMappingFields } from '@/utils/formValidation';
 
 interface UserSessionMappingFormData {
   userSessionRefId: string;
@@ -61,6 +62,7 @@ export default function AdminMappingsPage({ initialMode }: AdminMappingsPageProp
   const [form, setForm] = useState<UserSessionMappingFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [deleteTarget, setDeleteTarget] = useState<UserSessionMapping | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -156,6 +158,7 @@ export default function AdminMappingsPage({ initialMode }: AdminMappingsPageProp
       status: 1,
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
   };
@@ -172,6 +175,7 @@ export default function AdminMappingsPage({ initialMode }: AdminMappingsPageProp
       status: m.status ?? 1,
     });
     setFormError(null);
+    setFieldErrors({});
     setSuccessMessage(null);
     setModalOpen(true);
 
@@ -212,23 +216,19 @@ export default function AdminMappingsPage({ initialMode }: AdminMappingsPageProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMode, id, userSessionRefId]);
 
-  const validateForm = (): string | null => {
-    if (!form.userId) {
-      return 'User is required. Please select a user.';
-    }
-    if (!form.sessionId) {
-      return 'Session is required. Please select a session.';
-    }
-    return null;
-  };
-
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setFieldErrors({});
 
-    const validationErr = validateForm();
-    if (validationErr) {
-      setFormError(validationErr);
+    const validationErrors = validateMappingFields({
+      userId: form.userId,
+      targetId: form.sessionId,
+      targetLabel: 'Session',
+    });
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      setFormError(Object.values(validationErrors)[0]);
       return;
     }
 
@@ -484,10 +484,12 @@ export default function AdminMappingsPage({ initialMode }: AdminMappingsPageProp
               User <span className="text-red-500">*</span>
             </label>
             <select
-              className="input"
+              className={`input ${fieldErrors.userId ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.userId}
-              onChange={(e) => setForm({ ...form, userId: e.target.value })}
-              required
+              onChange={(e) => {
+                setForm({ ...form, userId: e.target.value });
+                if (fieldErrors.userId) setFieldErrors({ ...fieldErrors, userId: '' });
+              }}
             >
               <option value="">Select user…</option>
               {users.map((u) => {
@@ -499,6 +501,9 @@ export default function AdminMappingsPage({ initialMode }: AdminMappingsPageProp
                 );
               })}
             </select>
+            {fieldErrors.userId && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.userId}</p>
+            )}
           </div>
 
           <div>
@@ -506,10 +511,12 @@ export default function AdminMappingsPage({ initialMode }: AdminMappingsPageProp
               Session <span className="text-red-500">*</span>
             </label>
             <select
-              className="input"
+              className={`input ${fieldErrors.targetId ? 'border-red-500 focus:ring-red-500' : ''}`}
               value={form.sessionId}
-              onChange={(e) => setForm({ ...form, sessionId: e.target.value })}
-              required
+              onChange={(e) => {
+                setForm({ ...form, sessionId: e.target.value });
+                if (fieldErrors.targetId) setFieldErrors({ ...fieldErrors, targetId: '' });
+              }}
             >
               <option value="">Select session…</option>
               {sessions.map((s) => {
@@ -521,6 +528,9 @@ export default function AdminMappingsPage({ initialMode }: AdminMappingsPageProp
                 );
               })}
             </select>
+            {fieldErrors.targetId && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">{fieldErrors.targetId}</p>
+            )}
           </div>
 
           <div>
